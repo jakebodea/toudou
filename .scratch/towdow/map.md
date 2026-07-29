@@ -26,15 +26,17 @@ A working macOS-first **Tauri 2 + React + Vite + shadcn** desktop app in this re
 - [Port airy list prototype onto Zig core](.scratch/towdow/issues/11-port-prototype-to-zig-core.md) — Ruled out; TypeScript UI stack; no Zig app core.
 - [Platform pivot to Tauri + React + shadcn](.scratch/towdow/issues/13-platform-pivot-tauri.md) — Leave Native SDK; Tauri 2 + React + Vite + shadcn for CSS/animation liberty and React comfort.
 - [Scaffold Tauri 2 + React + shadcn](.scratch/towdow/issues/14-scaffold-tauri-react-shadcn.md) — Runnable Tauri/React/shadcn app at repo root; `bun run tauri dev` / build verified.
+- [Copper UI React shell](.scratch/towdow/issues/15-copper-ui-react-shell.md) — Capture list + Composer + Done + toast in React/shadcn; click expands to edit; ⌘/ctrl-click multi-select copies numbered list.
+- [Tauri SQLite persistence](.scratch/towdow/issues/12-storage-companion-productionize.md) — In-process `rusqlite` at app data; create/list/update/Done/24h purge; tags JSON on row for MVP.
+- [macOS capture (in-process)](.scratch/towdow/issues/07-macos-capture-companion.md) — Double-Shift (safe FlagsChanged tap) + ⌘⇧Space; AX selection + clipboard text; tray; `capture://created`.
 
 ## Not yet specified
 
-- Exact toast visual in React
 - Tag create/rename/delete UX
 - Whether Source tags are removable/editable
 - Hotkey preferences UI
-- SQLite access library under Tauri (plugin-sql vs better-sqlite3 sidecar vs rust)
-- Packaging / notarization with capture helper
+- Image clipboard → attachments spool
+- Packaging / notarization + stable TCC signing
 - Cross-platform beyond macOS-first
 
 ## Out of scope

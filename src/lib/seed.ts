@@ -1,0 +1,57 @@
+import type { Capture } from "@/lib/types.ts";
+
+export function seedCaptures(): Capture[] {
+  const now = Date.now();
+  return [
+    {
+      body: "Rewrite this PR description so a reviewer can scan it in 20 seconds.",
+      createdAt: now - 60_000,
+      done: false,
+      doneAt: null,
+      id: "1",
+      section: "prompts",
+      source: "Cursor",
+      tags: ["prompt"],
+    },
+    {
+      body: "Turn these meeting notes into three follow-up prompts for Claude.",
+      createdAt: now - 120_000,
+      done: false,
+      doneAt: null,
+      id: "2",
+      section: "prompts",
+      source: "Cursor",
+      tags: ["prompt"],
+    },
+    {
+      body: "https://ui.shadcn.com/copper",
+      createdAt: now - 180_000,
+      done: false,
+      doneAt: null,
+      id: "3",
+      section: "links",
+      source: "Helium",
+      tags: ["link"],
+    },
+    {
+      body: "Ship the capture companion with Accessibility onboarding.",
+      createdAt: now - 240_000,
+      done: false,
+      doneAt: null,
+      id: "4",
+      section: "inbox",
+      source: "Towdow",
+      tags: [],
+    },
+    {
+      body: "Old capture — already Done, lives under Done.",
+      createdAt: now - 86_400_000,
+      done: true,
+      doneAt: now - 3_600_000,
+      id: "5",
+      section: "inbox",
+      source: "Notes",
+      tags: [],
+    },
+  ];
+}
