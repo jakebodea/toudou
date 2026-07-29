@@ -1,0 +1,27 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "extends": [
+    "ultracite/biome/core",
+    "ultracite/biome/type-aware",
+    "ultracite/biome/react"
+  ],
+  "files": {
+    "includes": [
+      "!**/src-tauri",
+      "!**/dist",
+      "!**/.scratch",
+      "!**/zig-out",
+      "!**/.native",
+      "!**/public/**/*.svg"
+    ]
+  },
+  "linter": {
+    "rules": {
+      "correctness": {
+        // Package `exports` maps confuse Biome's resolver for Vite/React deps;
+        // tsc remains the source of truth for module resolution.
+        "noUnresolvedImports": "off"
+      }
+    }
+  }
+}
