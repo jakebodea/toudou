@@ -5,7 +5,7 @@ import {
   type Result,
   type Capture as WireCapture,
 } from "@/lib/bindings.ts";
-import type { Capture, CaptureKind } from "@/lib/types.ts";
+import type { Capture, CaptureKind, CaptureStatus } from "@/lib/types.ts";
 
 function unwrap<T>(result: Result<T, string>): T {
   if (result.status === "ok") {
@@ -26,6 +26,7 @@ function fromWire(row: WireCapture): Capture {
     doneAt: row.doneAt,
     id: row.id,
     imagePath: row.imagePath,
+    inProgress: row.inProgress,
     kind: kindFromWire(row.kind),
     section: "inbox",
     source: row.source,
@@ -41,6 +42,7 @@ function toNewCapture(capture: Capture): NewCapture {
     doneAt: capture.doneAt,
     id: capture.id,
     imagePath: capture.imagePath,
+    inProgress: capture.inProgress,
     kind: capture.kind,
     section: "inbox",
     source: capture.source,
@@ -109,6 +111,13 @@ export async function setCaptureDone(
   doneAt: number | null
 ): Promise<void> {
   unwrap(await commands.setCaptureDone(id, done, doneAt));
+}
+
+export async function setCaptureStatus(
+  id: string,
+  status: CaptureStatus
+): Promise<void> {
+  unwrap(await commands.setCaptureStatus(id, status));
 }
 
 export async function purgeExpiredDone(cutoffMs: number): Promise<number> {

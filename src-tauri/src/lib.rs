@@ -26,6 +26,7 @@ fn specta_builder() -> Builder {
         db_commands::update_capture_body,
         db_commands::update_capture_tags,
         db_commands::set_capture_done,
+        db_commands::set_capture_status,
         db_commands::purge_expired_done,
         db_commands::seed_demo_captures,
         capture::capture_now,
@@ -186,6 +187,7 @@ mod db_commands {
             done_at: None,
             kind: "image".to_string(),
             image_path: Some(path.to_string_lossy().into_owned()),
+            in_progress: false,
         };
 
         let conn = state.0.lock().map_err(|e| e.to_string())?;
@@ -224,6 +226,17 @@ mod db_commands {
     ) -> Result<(), String> {
         let conn = state.0.lock().map_err(|e| e.to_string())?;
         db::set_done(&conn, &id, done, done_at)
+    }
+
+    #[tauri::command]
+    #[specta::specta]
+    pub fn set_capture_status(
+        state: tauri::State<'_, Db>,
+        id: String,
+        status: String,
+    ) -> Result<(), String> {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        db::set_status(&conn, &id, &status)
     }
 
     #[tauri::command]

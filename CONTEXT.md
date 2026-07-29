@@ -24,6 +24,10 @@ _Avoid_: Folder, project, label, section (as a filing hierarchy)
 An auto-assigned Tag naming the frontmost app at capture time when detectable (e.g. Cursor, Helium).
 _Avoid_: Origin, app name (as a separate concept)
 
+**In Progress**:
+Optional middle stage between the inbox and Done. When enabled in Settings, checkbox clicks advance inbox → In Progress → Done (restore from Done returns to In Progress). In Progress Captures live in their own section.
+_Avoid_: Doing, started, WIP (as the user-facing name)
+
 **Done**:
 The completed state of a Capture. Done Captures stay visible in a collapsible, filterable section until purged 24 hours after completion.
 _Avoid_: Archive, trash, soft-delete (as the user-facing name)

@@ -55,6 +55,14 @@ async setCaptureDone(id: string, done: boolean, doneAt: number | null) : Promise
     else return { status: "error", error: e  as any };
 }
 },
+async setCaptureStatus(id: string, status: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_capture_status", { id, status }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async purgeExpiredDone(cutoffMs: number) : Promise<Result<number, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("purge_expired_done", { cutoffMs }) };
@@ -105,9 +113,9 @@ async ingestCapture(body: string, source: string) : Promise<Result<CaptureNotice
 
 /** user-defined types **/
 
-export type Capture = { id: string; body: string; source: string; section: string; tags: string[]; done: boolean; doneAt: number | null; createdAt: number; kind: string; imagePath: string | null }
+export type Capture = { id: string; body: string; source: string; section: string; tags: string[]; done: boolean; doneAt: number | null; createdAt: number; kind: string; imagePath: string | null; inProgress: boolean }
 export type CaptureNotice = { id: string; body: string; source: string }
-export type NewCapture = { id: string; body: string; source: string; section: string; tags: string[]; createdAt: number; done?: boolean; doneAt?: number | null; kind?: string; imagePath?: string | null }
+export type NewCapture = { id: string; body: string; source: string; section: string; tags: string[]; createdAt: number; done?: boolean; doneAt?: number | null; kind?: string; imagePath?: string | null; inProgress?: boolean }
 export type PermissionStatus = { accessibility: boolean; inputMonitoring: boolean }
 
 /** tauri-specta globals **/

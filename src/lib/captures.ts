@@ -17,16 +17,44 @@ export function filterCaptures(
   });
 }
 
+function sortByCreatedAt(captures: Capture[], sort: InboxSort): Capture[] {
+  return captures.sort((a, b) =>
+    sort === "oldest" ? a.createdAt - b.createdAt : b.createdAt - a.createdAt
+  );
+}
+
+/** Inbox items that are not Done (and not In Progress when that stage is on). */
 export function activeCaptures(
+  captures: readonly Capture[],
+  query: string,
+  sort: InboxSort = "oldest",
+  inProgressEnabled = false
+): Capture[] {
+  return sortByCreatedAt(
+    filterCaptures(captures, query).filter((capture) => {
+      if (capture.done) {
+        return false;
+      }
+      if (inProgressEnabled && capture.inProgress) {
+        return false;
+      }
+      return true;
+    }),
+    sort
+  );
+}
+
+export function inProgressCaptures(
   captures: readonly Capture[],
   query: string,
   sort: InboxSort = "oldest"
 ): Capture[] {
-  return filterCaptures(captures, query)
-    .filter((capture) => !capture.done)
-    .sort((a, b) =>
-      sort === "oldest" ? a.createdAt - b.createdAt : b.createdAt - a.createdAt
-    );
+  return sortByCreatedAt(
+    filterCaptures(captures, query).filter(
+      (capture) => capture.inProgress && !capture.done
+    ),
+    sort
+  );
 }
 
 export function doneCaptures(

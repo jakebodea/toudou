@@ -3,19 +3,31 @@ import { type RefObject, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Checkbox } from "@/components/ui/checkbox.tsx";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuRadioGroup,
+  ContextMenuRadioItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu.tsx";
 import { Textarea } from "@/components/ui/textarea.tsx";
 import { parseTags } from "@/lib/captures.ts";
 import { captureImageSrc } from "@/lib/storage.ts";
-import type { Capture } from "@/lib/types.ts";
+import {
+  type Capture,
+  type CaptureStatus,
+  captureStatus,
+} from "@/lib/types.ts";
 import { cn } from "@/lib/utils.ts";
 
 interface CaptureCardProps {
   capture: Capture;
   /** Checked UI before the card moves to Done. */
   checking?: boolean;
+  inProgressEnabled?: boolean;
   onCopied?: () => void;
   onSave: (id: string, body: string, tags: string[]) => void;
-  onToggleDone: (id: string) => void;
+  onSetStatus: (id: string, status: CaptureStatus) => void;
   onToggleSelect: (id: string) => void;
   selected: boolean;
 }
@@ -264,12 +276,55 @@ function TagAddControl({
   );
 }
 
+function nextStatus(
+  status: CaptureStatus,
+  inProgressEnabled: boolean
+): CaptureStatus {
+  if (!inProgressEnabled) {
+    return status === "done" ? "active" : "done";
+  }
+  switch (status) {
+    case "active":
+      return "in_progress";
+    case "in_progress":
+      return "done";
+    case "done":
+      return "in_progress";
+    default: {
+      const _exhaustive: never = status;
+      throw new Error(`Unhandled capture status: ${_exhaustive}`);
+    }
+  }
+}
+
+function checkboxAriaLabel(
+  status: CaptureStatus,
+  inProgressEnabled: boolean
+): string {
+  if (!inProgressEnabled) {
+    return status === "done" ? "Restore capture" : "Mark done";
+  }
+  switch (status) {
+    case "active":
+      return "Mark in progress";
+    case "in_progress":
+      return "Mark done";
+    case "done":
+      return "Restore to in progress";
+    default: {
+      const _exhaustive: never = status;
+      throw new Error(`Unhandled capture status: ${_exhaustive}`);
+    }
+  }
+}
+
 export function CaptureCard({
   capture,
   checking = false,
+  inProgressEnabled = false,
   selected,
   onCopied,
-  onToggleDone,
+  onSetStatus,
   onToggleSelect,
   onSave,
 }: CaptureCardProps) {
@@ -281,6 +336,9 @@ export function CaptureCard({
   const tagInputRef = useRef<HTMLInputElement>(null);
   const skipBodyBlur = useRef(false);
   const skipTagBlur = useRef(false);
+  const status = captureStatus(capture);
+  const isInProgress = status === "in_progress";
+  const isDone = status === "done" || checking;
 
   useEffect(() => {
     if (!editing) {
@@ -403,32 +461,70 @@ export function CaptureCard({
     setAddingTag(false);
   };
 
+  const checkbox = (
+    <Checkbox
+      aria-label={checkboxAriaLabel(status, inProgressEnabled)}
+      checked={checking || status === "done"}
+      className={cn(
+        "mt-0.5 size-5 rounded-full transition-[transform,box-shadow,border-color] duration-150 ease-out",
+        "motion-reduce:transition-none",
+        isDone && "scale-105",
+        isInProgress &&
+          inProgressEnabled &&
+          "shadow-[0_0_0_3px] shadow-foreground/20 ring-2 ring-foreground/35"
+      )}
+      disabled={checking}
+      onCheckedChange={() => {
+        onSetStatus(capture.id, nextStatus(status, inProgressEnabled));
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
+      }}
+    />
+  );
+
   return (
     <div
       className={cn(
         "rounded-2xl bg-background shadow-sm ring-1",
         selected ? "ring-foreground/25" : "ring-black/5",
-        capture.done && "opacity-65"
+        capture.done && "opacity-65",
+        isInProgress && inProgressEnabled && "shadow-md ring-foreground/12"
       )}
       data-capture-id={capture.id}
     >
       <div className="flex items-start gap-3 px-3.5 py-3">
-        <Checkbox
-          aria-label={capture.done ? "Restore capture" : "Mark done"}
-          checked={capture.done || checking}
-          className={cn(
-            "mt-0.5 size-5 rounded-full transition-transform duration-150 ease-out",
-            "motion-reduce:transition-none",
-            (capture.done || checking) && "scale-105"
-          )}
-          disabled={checking}
-          onCheckedChange={() => {
-            onToggleDone(capture.id);
-          }}
-          onClick={(event) => {
-            event.stopPropagation();
-          }}
-        />
+        {inProgressEnabled ? (
+          <ContextMenu>
+            <ContextMenuTrigger asChild>
+              <span className="inline-flex">{checkbox}</span>
+            </ContextMenuTrigger>
+            <ContextMenuContent className="w-44">
+              <ContextMenuRadioGroup
+                onValueChange={(value) => {
+                  if (
+                    value === "active" ||
+                    value === "in_progress" ||
+                    value === "done"
+                  ) {
+                    onSetStatus(capture.id, value);
+                  }
+                }}
+                value={status}
+              >
+                <ContextMenuRadioItem value="active">
+                  Inbox
+                </ContextMenuRadioItem>
+                <ContextMenuRadioItem value="in_progress">
+                  In Progress
+                </ContextMenuRadioItem>
+                <ContextMenuRadioItem value="done">Done</ContextMenuRadioItem>
+              </ContextMenuRadioGroup>
+            </ContextMenuContent>
+          </ContextMenu>
+        ) : (
+          checkbox
+        )}
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           <CaptureBody
             capture={capture}

@@ -17,6 +17,7 @@ pub struct Capture {
     pub created_at: i64,
     pub kind: String,
     pub image_path: Option<String>,
+    pub in_progress: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -36,6 +37,8 @@ pub struct NewCapture {
     pub kind: String,
     #[serde(default)]
     pub image_path: Option<String>,
+    #[serde(default)]
+    pub in_progress: bool,
 }
 
 fn default_kind() -> String {
@@ -102,6 +105,21 @@ fn migrate(conn: &Connection) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     }
 
+    let version: i32 = conn
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+
+    if version < 3 {
+        conn.execute_batch(
+            "
+            ALTER TABLE captures ADD COLUMN in_progress INTEGER NOT NULL DEFAULT 0;
+            CREATE INDEX idx_captures_in_progress ON captures(in_progress, created_at DESC);
+            PRAGMA user_version = 3;
+            ",
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
     Ok(())
 }
 
@@ -109,6 +127,7 @@ fn row_to_capture(row: &rusqlite::Row<'_>) -> Result<Capture, rusqlite::Error> {
     let tags_json: String = row.get(4)?;
     let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
     let done: i64 = row.get(5)?;
+    let in_progress: i64 = row.get(10)?;
     Ok(Capture {
         id: row.get(0)?,
         body: row.get(1)?,
@@ -120,6 +139,7 @@ fn row_to_capture(row: &rusqlite::Row<'_>) -> Result<Capture, rusqlite::Error> {
         created_at: row.get(7)?,
         kind: row.get(8)?,
         image_path: row.get(9)?,
+        in_progress: in_progress != 0,
     })
 }
 
@@ -127,7 +147,7 @@ pub fn list_captures(conn: &Connection) -> Result<Vec<Capture>, String> {
     let mut stmt = conn
         .prepare(
             "
-            SELECT id, body, source, section, tags_json, done, done_at, created_at, kind, image_path
+            SELECT id, body, source, section, tags_json, done, done_at, created_at, kind, image_path, in_progress
             FROM captures
             ORDER BY created_at DESC
             ",
@@ -146,12 +166,13 @@ pub fn list_captures(conn: &Connection) -> Result<Vec<Capture>, String> {
 pub fn create_capture(conn: &Connection, capture: &NewCapture) -> Result<Capture, String> {
     let tags_json = serde_json::to_string(&capture.tags).map_err(|e| e.to_string())?;
     let done_int = i64::from(capture.done);
+    let in_progress_int = i64::from(capture.in_progress && !capture.done);
     conn.execute(
         "
         INSERT INTO captures (
-          id, body, source, section, tags_json, done, done_at, created_at, kind, image_path
+          id, body, source, section, tags_json, done, done_at, created_at, kind, image_path, in_progress
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
         ",
         params![
             capture.id,
@@ -163,7 +184,8 @@ pub fn create_capture(conn: &Connection, capture: &NewCapture) -> Result<Capture
             capture.done_at,
             capture.created_at,
             capture.kind,
-            capture.image_path
+            capture.image_path,
+            in_progress_int
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -179,6 +201,7 @@ pub fn create_capture(conn: &Connection, capture: &NewCapture) -> Result<Capture
         created_at: capture.created_at,
         kind: capture.kind.clone(),
         image_path: capture.image_path.clone(),
+        in_progress: in_progress_int != 0,
     })
 }
 
@@ -216,10 +239,46 @@ pub fn set_done(
     done_at: Option<i64>,
 ) -> Result<(), String> {
     let done_int = i64::from(done);
+    // Completing clears in_progress; restoring leaves the row in the inbox.
+    let in_progress_int = 0_i64;
     let changed = conn
         .execute(
-            "UPDATE captures SET done = ?1, done_at = ?2 WHERE id = ?3",
-            params![done_int, done_at, id],
+            "UPDATE captures SET done = ?1, done_at = ?2, in_progress = ?3 WHERE id = ?4",
+            params![done_int, done_at, in_progress_int, id],
+        )
+        .map_err(|e| e.to_string())?;
+    if changed == 0 {
+        return Err(format!("capture not found: {id}"));
+    }
+    Ok(())
+}
+
+/// Set workflow status: `active`, `in_progress`, or `done`.
+pub fn set_status(conn: &Connection, id: &str, status: &str) -> Result<(), String> {
+    let (done, done_at, in_progress) = match status {
+        "active" => (false, None, false),
+        "in_progress" => (false, None, true),
+        "done" => (
+            true,
+            Some(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as i64)
+                    .unwrap_or(0),
+            ),
+            false,
+        ),
+        _ => return Err(format!("invalid status: {status}")),
+    };
+    let changed = conn
+        .execute(
+            "UPDATE captures SET done = ?1, done_at = ?2, in_progress = ?3 WHERE id = ?4",
+            params![
+                i64::from(done),
+                done_at,
+                i64::from(in_progress),
+                id
+            ],
         )
         .map_err(|e| e.to_string())?;
     if changed == 0 {
@@ -305,11 +364,12 @@ mod tests {
             done_at: None,
             kind: "text".to_string(),
             image_path: None,
+            in_progress: false,
         }
     }
 
     #[test]
-    fn open_migrates_to_v2_and_supports_crud() {
+    fn open_migrates_to_v3_and_supports_crud() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("towdow.sqlite3");
         let conn = open(&path).unwrap();
@@ -317,24 +377,30 @@ mod tests {
         let version: i32 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
 
         create_capture(&conn, &sample("1", "hello", 100)).unwrap();
         update_body(&conn, "1", "hello world").unwrap();
         update_tags(&conn, "1", &["x".to_string(), "y".to_string()]).unwrap();
-        set_done(&conn, "1", true, Some(200)).unwrap();
+        set_status(&conn, "1", "in_progress").unwrap();
 
         let rows = list_captures(&conn).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].body, "hello world");
         assert_eq!(rows[0].tags, vec!["x".to_string(), "y".to_string()]);
-        assert!(rows[0].done);
-        assert_eq!(rows[0].done_at, Some(200));
+        assert!(!rows[0].done);
+        assert!(rows[0].in_progress);
         assert_eq!(rows[0].kind, "text");
+
+        set_done(&conn, "1", true, Some(200)).unwrap();
+        let rows = list_captures(&conn).unwrap();
+        assert!(rows[0].done);
+        assert!(!rows[0].in_progress);
+        assert_eq!(rows[0].done_at, Some(200));
     }
 
     #[test]
-    fn migrates_v1_rows_to_v2() {
+    fn migrates_v1_rows_to_v3() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("legacy.sqlite3");
         {
@@ -369,13 +435,14 @@ mod tests {
         let version: i32 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
 
         let rows = list_captures(&conn).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].id, "legacy");
         assert_eq!(rows[0].kind, "text");
         assert_eq!(rows[0].image_path, None);
+        assert!(!rows[0].in_progress);
         assert_eq!(rows[0].tags, vec!["tag".to_string()]);
     }
 
@@ -400,6 +467,7 @@ mod tests {
                 done_at: Some(10),
                 kind: "image".into(),
                 image_path: Some(image.to_string_lossy().into_owned()),
+                in_progress: false,
             },
         )
         .unwrap();
@@ -416,6 +484,7 @@ mod tests {
                 done_at: Some(1000),
                 kind: "text".into(),
                 image_path: None,
+                in_progress: false,
             },
         )
         .unwrap();

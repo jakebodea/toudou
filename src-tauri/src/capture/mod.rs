@@ -73,6 +73,7 @@ fn run_capture_on_main(app: &AppHandle) {
         done_at: None,
         kind: "text".to_string(),
         image_path: None,
+        in_progress: false,
     };
 
     let Some(db) = app.try_state::<Db>() else {
@@ -196,6 +197,7 @@ pub fn ingest_capture(
         done_at: None,
         kind: "text".to_string(),
         image_path: None,
+        in_progress: false,
     };
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let saved = db::create_capture(&conn, &capture)?;

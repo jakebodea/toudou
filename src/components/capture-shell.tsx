@@ -1,30 +1,19 @@
 import { listen } from "@tauri-apps/api/event";
 import { ClipboardIcon, MoreHorizontalIcon, SearchIcon } from "lucide-react";
-import {
-  AnimatePresence,
-  LayoutGroup,
-  motion,
-  useReducedMotion,
-} from "motion/react";
+import { useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CaptureCard } from "@/components/capture-card.tsx";
 import { CaptureComposer } from "@/components/capture-composer.tsx";
+import { CaptureInboxList } from "@/components/capture-inbox-list.tsx";
 import { CapturePermissions } from "@/components/capture-permissions.tsx";
+import { CaptureSettings } from "@/components/capture-settings.tsx";
 import { CaptureToast } from "@/components/capture-toast.tsx";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.tsx";
@@ -36,6 +25,7 @@ import {
   activeCaptures,
   captureListLine,
   doneCaptures,
+  inProgressCaptures,
   newId,
   numberedList,
 } from "@/lib/captures.ts";
@@ -43,7 +33,14 @@ import {
   LIST_EXIT_TRANSITION,
   LIST_LAYOUT_TRANSITION,
 } from "@/lib/list-motion.ts";
-import { readInboxSort, writeInboxSort } from "@/lib/preferences.ts";
+import {
+  readCopySetsInProgress,
+  readInboxSort,
+  readInProgressEnabled,
+  writeCopySetsInProgress,
+  writeInboxSort,
+  writeInProgressEnabled,
+} from "@/lib/preferences.ts";
 import { seedCaptures } from "@/lib/seed.ts";
 import {
   createImageCapture,
@@ -53,11 +50,17 @@ import {
   createCapture as persistCreate,
   purgeExpiredDone,
   seedDemoCaptures,
-  setCaptureDone,
+  setCaptureStatus,
   updateCaptureBody,
   updateCaptureTags,
 } from "@/lib/storage.ts";
-import type { Capture, InboxSort } from "@/lib/types.ts";
+import {
+  type Capture,
+  type CaptureStatus,
+  captureStatus,
+  type InboxSort,
+  statusFields,
+} from "@/lib/types.ts";
 
 const TOAST_MS = 1200;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -73,20 +76,37 @@ export function CaptureShell() {
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState("Captured");
   const [doneOpen, setDoneOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [inboxSort, setInboxSort] = useState<InboxSort>(() => readInboxSort());
+  const [inProgressEnabled, setInProgressEnabled] = useState(() =>
+    readInProgressEnabled()
+  );
+  const [copySetsInProgress, setCopySetsInProgress] = useState(() =>
+    readCopySetsInProgress()
+  );
   const [checkingIds, setCheckingIds] = useState<Set<string>>(() => new Set());
   const toastTimer = useRef<number | null>(null);
   const layoutEnabled = !reduceMotion;
-  const sharedLayout = Boolean(doneOpen && layoutEnabled);
+  const sharedLayout = Boolean(
+    layoutEnabled && (doneOpen || inProgressEnabled)
+  );
 
   const active = useMemo(
-    () => activeCaptures(captures, query, inboxSort),
-    [captures, query, inboxSort]
+    () => activeCaptures(captures, query, inboxSort, inProgressEnabled),
+    [captures, query, inboxSort, inProgressEnabled]
+  );
+  const inProgress = useMemo(
+    () =>
+      inProgressEnabled ? inProgressCaptures(captures, query, inboxSort) : [],
+    [captures, query, inboxSort, inProgressEnabled]
   );
   const done = useMemo(() => doneCaptures(captures, query), [captures, query]);
   const isVacant = captures.length === 0;
   const noMatches =
-    captures.length > 0 && active.length === 0 && done.length === 0;
+    captures.length > 0 &&
+    active.length === 0 &&
+    inProgress.length === 0 &&
+    done.length === 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -220,6 +240,7 @@ export function CaptureShell() {
       doneAt: null,
       id: newId(),
       imagePath: null,
+      inProgress: false,
       kind: "text",
       section: "inbox",
       source,
@@ -267,6 +288,7 @@ export function CaptureShell() {
         doneAt: null,
         id: newId(),
         imagePath: dataUrl,
+        inProgress: false,
         kind: "image",
         section: "inbox",
         source: "Towdow",
@@ -291,16 +313,11 @@ export function CaptureShell() {
     addCapture("Simulated global capture — selection or clipboard.", "Safari");
   };
 
-  const applyDone = (
-    id: string,
-    nextDone: boolean,
-    nextDoneAt: number | null
-  ) => {
+  const applyStatus = (id: string, status: CaptureStatus) => {
+    const fields = statusFields(status);
     setCaptures((prev) =>
       prev.map((capture) =>
-        capture.id === id
-          ? { ...capture, done: nextDone, doneAt: nextDoneAt }
-          : capture
+        capture.id === id ? { ...capture, ...fields } : capture
       )
     );
     setSelectedIds((prev) => {
@@ -310,28 +327,29 @@ export function CaptureShell() {
     });
   };
 
-  const toggleDone = (id: string) => {
+  const setStatus = (id: string, status: CaptureStatus) => {
     const current = captures.find((capture) => capture.id === id);
     if (!current || checkingIds.has(id)) {
       return;
     }
-    const nextDone = !current.done;
-    const nextDoneAt = nextDone ? Date.now() : null;
+    if (captureStatus(current) === status) {
+      return;
+    }
 
     const persist = () => {
       if (isTauriRuntime()) {
-        setCaptureDone(id, nextDone, nextDoneAt)
+        setCaptureStatus(id, status)
           .then(() => {
-            applyDone(id, nextDone, nextDoneAt);
+            applyStatus(id, status);
           })
           .catch(() => undefined);
         return;
       }
-      applyDone(id, nextDone, nextDoneAt);
+      applyStatus(id, status);
     };
 
-    // Completing: show the check briefly, then move. Restore is immediate.
-    if (nextDone) {
+    // Completing: show the check briefly, then move. Other transitions are immediate.
+    if (status === "done") {
       setCheckingIds((prev) => new Set(prev).add(id));
       window.setTimeout(() => {
         persist();
@@ -344,6 +362,18 @@ export function CaptureShell() {
       return;
     }
     persist();
+  };
+
+  const handleCopied = (id: string) => {
+    showToast("Copied");
+    if (!(inProgressEnabled && copySetsInProgress)) {
+      return;
+    }
+    const current = captures.find((capture) => capture.id === id);
+    if (!current || current.done || current.inProgress) {
+      return;
+    }
+    setStatus(id, "in_progress");
   };
 
   const toggleSelect = (id: string) => {
@@ -382,7 +412,7 @@ export function CaptureShell() {
   };
 
   const copySelected = async () => {
-    const lines = active
+    const lines = [...active, ...inProgress]
       .filter((capture) => selectedIds.has(capture.id))
       .map((capture) => captureListLine(capture));
     if (lines.length === 0) {
@@ -405,6 +435,21 @@ export function CaptureShell() {
     );
   }
 
+  const renderCard = (capture: Capture) => (
+    <CaptureCard
+      capture={capture}
+      checking={checkingIds.has(capture.id)}
+      inProgressEnabled={inProgressEnabled}
+      onCopied={() => {
+        handleCopied(capture.id);
+      }}
+      onSave={saveCapture}
+      onSetStatus={setStatus}
+      onToggleSelect={toggleSelect}
+      selected={selectedIds.has(capture.id)}
+    />
+  );
+
   return (
     <div className="relative flex h-svh flex-col bg-muted/45">
       <CaptureToast message={toastMessage} visible={toastVisible} />
@@ -422,6 +467,22 @@ export function CaptureShell() {
             value={query}
           />
         </div>
+        <CaptureSettings
+          copySetsInProgress={copySetsInProgress}
+          inboxSort={inboxSort}
+          inProgressEnabled={inProgressEnabled}
+          onCopySetsInProgressChange={(enabled) => {
+            setCopySetsInProgress(enabled);
+            writeCopySetsInProgress(enabled);
+          }}
+          onInboxSortChange={setSort}
+          onInProgressEnabledChange={(enabled) => {
+            setInProgressEnabled(enabled);
+            writeInProgressEnabled(enabled);
+          }}
+          onOpenChange={setSettingsOpen}
+          open={settingsOpen}
+        />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -446,23 +507,6 @@ export function CaptureShell() {
               Capture selection / clipboard
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel>Inbox sort</DropdownMenuLabel>
-            <DropdownMenuRadioGroup
-              onValueChange={(value) => {
-                if (value === "oldest" || value === "newest") {
-                  setSort(value);
-                }
-              }}
-              value={inboxSort}
-            >
-              <DropdownMenuRadioItem value="oldest">
-                Oldest first
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="newest">
-                Newest first
-              </DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-            <DropdownMenuSeparator />
             <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">
               <span className="flex items-center gap-1.5">
                 Global
@@ -484,134 +528,23 @@ export function CaptureShell() {
 
       <ScrollArea className="min-h-0 flex-1">
         {/* Padding lives inside the viewport so ring/shadow aren't clipped on LR edges */}
-        <LayoutGroup id="towdow-captures">
-          <div className="flex flex-col gap-2.5 px-4 py-3 pb-6">
-            {isVacant ? (
-              <div className="flex flex-col items-start gap-2 px-2 py-14 text-muted-foreground">
-                <p className="font-medium text-foreground text-sm">
-                  Your capture inbox is empty
-                </p>
-                <p className="max-w-[16rem] text-sm leading-relaxed">
-                  Drop something in below, or grab text from any app with{" "}
-                  <KbdGroup className="mx-0.5 inline-flex">
-                    <Kbd>⇧</Kbd>
-                    <Kbd>⇧</Kbd>
-                  </KbdGroup>
-                  .
-                </p>
-              </div>
-            ) : null}
-
-            {noMatches ? (
-              <p className="px-2 py-8 text-muted-foreground text-sm">
-                Nothing matches “{query}”.
-              </p>
-            ) : null}
-
-            <AnimatePresence initial={false} mode="popLayout">
-              {active.map((capture) => (
-                <motion.div
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={
-                    sharedLayout || reduceMotion
-                      ? undefined
-                      : {
-                          opacity: 0,
-                          scale: 0.97,
-                          transition: LIST_EXIT_TRANSITION,
-                          y: -6,
-                        }
-                  }
-                  initial={
-                    sharedLayout || reduceMotion
-                      ? false
-                      : { opacity: 0, scale: 0.98, y: 6 }
-                  }
-                  key={capture.id}
-                  layout={layoutEnabled ? "position" : false}
-                  layoutId={sharedLayout ? capture.id : undefined}
-                  transition={LIST_LAYOUT_TRANSITION}
-                >
-                  <CaptureCard
-                    capture={capture}
-                    checking={checkingIds.has(capture.id)}
-                    onCopied={() => {
-                      showToast("Copied");
-                    }}
-                    onSave={saveCapture}
-                    onToggleDone={toggleDone}
-                    onToggleSelect={toggleSelect}
-                    selected={selectedIds.has(capture.id)}
-                  />
-                </motion.div>
-              ))}
-            </AnimatePresence>
-
-            <AnimatePresence initial={false}>
-              {done.length > 0 || doneOpen ? (
-                <motion.div
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={
-                    reduceMotion
-                      ? undefined
-                      : { opacity: 0, transition: LIST_EXIT_TRANSITION, y: -4 }
-                  }
-                  initial={reduceMotion ? false : { opacity: 0, y: -6 }}
-                  key="done-section"
-                  layout={layoutEnabled ? "position" : false}
-                  transition={LIST_LAYOUT_TRANSITION}
-                >
-                  <Accordion
-                    collapsible
-                    onValueChange={(value) => {
-                      setDoneOpen(value === "done");
-                    }}
-                    type="single"
-                    value={doneOpen ? "done" : ""}
-                  >
-                    <AccordionItem className="mt-2 border-0" value="done">
-                      <AccordionTrigger className="px-1 py-2 text-[11px] text-muted-foreground tracking-[0.1em] hover:no-underline">
-                        DONE
-                        {done.length > 0 ? (
-                          <span className="ml-1.5 font-normal tracking-normal opacity-70">
-                            {done.length}
-                          </span>
-                        ) : null}
-                      </AccordionTrigger>
-                      <AccordionContent className="flex flex-col gap-2.5 px-0.5 pt-1.5">
-                        {done.length === 0 ? (
-                          <p className="px-1 text-muted-foreground text-sm">
-                            Nothing completed yet.
-                          </p>
-                        ) : (
-                          done.map((capture) => (
-                            <motion.div
-                              key={capture.id}
-                              layout={sharedLayout ? "position" : false}
-                              layoutId={sharedLayout ? capture.id : undefined}
-                              transition={LIST_LAYOUT_TRANSITION}
-                            >
-                              <CaptureCard
-                                capture={capture}
-                                onCopied={() => {
-                                  showToast("Copied");
-                                }}
-                                onSave={saveCapture}
-                                onToggleDone={toggleDone}
-                                onToggleSelect={toggleSelect}
-                                selected={selectedIds.has(capture.id)}
-                              />
-                            </motion.div>
-                          ))
-                        )}
-                      </AccordionContent>
-                    </AccordionItem>
-                  </Accordion>
-                </motion.div>
-              ) : null}
-            </AnimatePresence>
-          </div>
-        </LayoutGroup>
+        <CaptureInboxList
+          active={active}
+          done={done}
+          doneOpen={doneOpen}
+          inProgress={inProgress}
+          inProgressEnabled={inProgressEnabled}
+          isVacant={isVacant}
+          layoutEnabled={layoutEnabled}
+          listExitTransition={LIST_EXIT_TRANSITION}
+          listLayoutTransition={LIST_LAYOUT_TRANSITION}
+          noMatches={noMatches}
+          onDoneOpenChange={setDoneOpen}
+          query={query}
+          reduceMotion={reduceMotion}
+          renderCard={renderCard}
+          sharedLayout={sharedLayout}
+        />
       </ScrollArea>
 
       <footer className="flex flex-col gap-2 pt-1 pb-4">
