@@ -40,13 +40,22 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: towdow ${{ github.ref_name }}
           releaseBody: |
-            macOS builds attached below.
+            ## Install (macOS)
 
-            Gatekeeper may warn until the app is signed/notarized with an Apple Developer ID.
-          releaseDraft: true
+            ```sh
+            curl -fsSL https://raw.githubusercontent.com/jakebodea/towdow/main/scripts/install.sh | bash
+            ```
+
+            Or download the `.dmg` below, drag into Applications, then right-click → Open the first time (Gatekeeper).
+
+            Installed apps check this release feed for OTA updates on launch.
+          releaseDraft: false
           prerelease: false
+          uploadUpdaterJson: true
           args: ${{ matrix.args }}

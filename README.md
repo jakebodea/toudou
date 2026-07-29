@@ -4,6 +4,22 @@ Personal desktop capture inbox (“toe doe”). macOS-first.
 
 **Stack:** Tauri 2 · React · Vite · TypeScript · shadcn/ui · Ultracite (Biome)
 
+## Install (friends)
+
+macOS, one liner (repo must be **public** so GitHub Releases are downloadable):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/jakebodea/towdow/main/scripts/install.sh | bash
+```
+
+Installs to `/Applications/towdow.app`. First launch: right-click → Open (unsigned / Gatekeeper).
+
+Override install location:
+
+```sh
+TOWDOW_INSTALL_DIR="$HOME/Applications" bash scripts/install.sh
+```
+
 ## Develop
 
 ```sh
@@ -36,7 +52,9 @@ Editor: Biome format-on-save via `.vscode/settings.json` (install the recommende
 - **⌘⇧Space** — same selection-only path (works without Input Monitoring)
 - Close window → hides to tray (Quit from tray menu)
 
-## Release
+## Release + OTA updates
+
+Installed apps poll GitHub Releases (`latest.json`) on launch and from **Settings → Check for updates**. Updates are signed with the Tauri updater key and replace the app binary (not App Store).
 
 ### Local (fastest while iterating)
 
@@ -51,7 +69,7 @@ That produces `towdow.app` + a `.dmg`. Drag the app wherever you want (Applicati
 xattr -cr /path/to/towdow.app
 ```
 
-### GitHub Release (draft)
+### GitHub Release
 
 1. Bump `version` in `package.json` and `src-tauri/tauri.conf.json` (keep them in sync).
 2. Commit, then tag and push:
@@ -61,9 +79,22 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-3. The [Release](.github/workflows/release.yml) workflow builds macOS arm64 + x64 and opens a **draft** GitHub Release with the artifacts. Publish the draft when you’re happy.
+3. The [Release](.github/workflows/release.yml) workflow builds macOS arm64 + x64, signs updater artifacts, uploads `latest.json`, and publishes the GitHub Release.
 
-Signing/notarization (no more Gatekeeper nag) needs an Apple Developer ID + secrets later — not required for private personal use.
+Secrets already used by CI:
+
+- `TAURI_SIGNING_PRIVATE_KEY` — from `~/.tauri/towdow.key` (do not commit)
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — empty if the key has no password
+
+Public key lives in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`). Losing the private key breaks OTA for existing installs — keep a backup of `~/.tauri/towdow.key`.
+
+**Private repo note:** friends cannot hit `/releases/latest/...` or the install script until the repo is public (or you host artifacts elsewhere). Flip with:
+
+```sh
+gh repo edit jakebodea/towdow --visibility public
+```
+
+Apple Developer ID signing/notarization (no Gatekeeper nag) is optional and separate from updater signing.
 
 ## Wayfinder
 

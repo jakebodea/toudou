@@ -273,12 +273,7 @@ pub fn set_status(conn: &Connection, id: &str, status: &str) -> Result<(), Strin
     let changed = conn
         .execute(
             "UPDATE captures SET done = ?1, done_at = ?2, in_progress = ?3 WHERE id = ?4",
-            params![
-                i64::from(done),
-                done_at,
-                i64::from(in_progress),
-                id
-            ],
+            params![i64::from(done), done_at, i64::from(in_progress), id],
         )
         .map_err(|e| e.to_string())?;
     if changed == 0 {

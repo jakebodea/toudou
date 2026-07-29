@@ -1,4 +1,5 @@
 import { SettingsIcon } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button.tsx";
 import {
   Dialog,
@@ -12,6 +13,7 @@ import { Label } from "@/components/ui/label.tsx";
 import { Separator } from "@/components/ui/separator.tsx";
 import { Switch } from "@/components/ui/switch.tsx";
 import type { InboxSort, Theme } from "@/lib/types.ts";
+import { checkAndInstallUpdate, updateResultMessage } from "@/lib/updates.ts";
 import { cn } from "@/lib/utils.ts";
 
 interface CaptureSettingsProps {
@@ -23,6 +25,7 @@ interface CaptureSettingsProps {
   onInProgressEnabledChange: (enabled: boolean) => void;
   onOpenChange: (open: boolean) => void;
   onThemeChange: (theme: Theme) => void;
+  onToast: (message: string) => void;
   open: boolean;
   theme: Theme;
 }
@@ -35,10 +38,13 @@ export function CaptureSettings({
   onInboxSortChange,
   onInProgressEnabledChange,
   onThemeChange,
+  onToast,
   open,
   onOpenChange,
   theme,
 }: CaptureSettingsProps) {
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogTrigger asChild>
@@ -145,6 +151,33 @@ export function CaptureSettings({
               label="Copy sets In Progress"
               onCheckedChange={onCopySetsInProgressChange}
             />
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <div className="flex flex-col gap-0.5">
+              <h3 className="font-medium text-sm">Updates</h3>
+              <p className="text-muted-foreground text-xs leading-relaxed">
+                Checks GitHub Releases. New builds install and relaunch
+                automatically.
+              </p>
+            </div>
+            <Button
+              disabled={checkingUpdate}
+              onClick={() => {
+                setCheckingUpdate(true);
+                void checkAndInstallUpdate()
+                  .then((result) => {
+                    onToast(updateResultMessage(result));
+                  })
+                  .finally(() => {
+                    setCheckingUpdate(false);
+                  });
+              }}
+              type="button"
+              variant="outline"
+            >
+              {checkingUpdate ? "Checking…" : "Check for updates"}
+            </Button>
           </section>
         </div>
       </DialogContent>

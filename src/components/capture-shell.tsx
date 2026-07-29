@@ -98,6 +98,7 @@ import {
   statusFields,
   type Theme,
 } from "@/lib/types.ts";
+import { checkAndInstallUpdate } from "@/lib/updates.ts";
 
 const TOAST_MS = 1200;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -164,6 +165,28 @@ export function CaptureShell() {
     active.length === 0 &&
     inProgress.length === 0 &&
     done.length === 0;
+
+  useEffect(() => {
+    if (!(ready && isTauriRuntime())) {
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void checkAndInstallUpdate().then((result) => {
+        if (cancelled || result.status !== "updated") {
+          return;
+        }
+        setToastMessage(`Updating to ${result.version}…`);
+        setToastVisible(true);
+      });
+    }, 2500);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [ready]);
 
   useEffect(() => {
     let cancelled = false;
@@ -831,6 +854,7 @@ export function CaptureShell() {
             writeTheme(next);
             applyTheme(next);
           }}
+          onToast={showToast}
           open={settingsOpen}
           theme={theme}
         />
