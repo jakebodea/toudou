@@ -67,9 +67,11 @@ import {
   readCopySetsInProgress,
   readInboxSort,
   readInProgressEnabled,
+  readTheme,
   writeCopySetsInProgress,
   writeInboxSort,
   writeInProgressEnabled,
+  writeTheme,
 } from "@/lib/preferences.ts";
 import { seedCaptures } from "@/lib/seed.ts";
 import {
@@ -86,6 +88,7 @@ import {
   updateCaptureBody,
   updateCaptureTags,
 } from "@/lib/storage.ts";
+import { applyTheme } from "@/lib/theme.ts";
 import {
   type Capture,
   type CaptureStatus,
@@ -93,6 +96,7 @@ import {
   type InboxSort,
   nextStatus,
   statusFields,
+  type Theme,
 } from "@/lib/types.ts";
 
 const TOAST_MS = 1200;
@@ -113,6 +117,7 @@ export function CaptureShell() {
   const [clearAllOpen, setClearAllOpen] = useState(false);
   const [clearingAll, setClearingAll] = useState(false);
   const [inboxSort, setInboxSort] = useState<InboxSort>(() => readInboxSort());
+  const [theme, setTheme] = useState<Theme>(() => readTheme());
   const [inProgressEnabled, setInProgressEnabled] = useState(() =>
     readInProgressEnabled()
   );
@@ -788,7 +793,7 @@ export function CaptureShell() {
           <SearchIcon className="pointer-events-none absolute top-1/2 left-3.5 size-3.5 -translate-y-1/2 text-muted-foreground/70" />
           <Input
             aria-label="Search"
-            className="h-10 rounded-full border-0 bg-background/90 pr-3 pl-9 shadow-sm ring-1 ring-black/5 transition-[box-shadow] duration-150 focus-visible:shadow-md focus-visible:ring-foreground/10"
+            className="h-10 rounded-full border-0 bg-background/90 pr-3 pl-9 shadow-sm ring-1 ring-foreground/5 transition-[box-shadow] duration-150 focus-visible:shadow-md focus-visible:ring-foreground/10"
             onChange={(event) => {
               setQuery(event.target.value);
             }}
@@ -811,13 +816,19 @@ export function CaptureShell() {
             writeInProgressEnabled(enabled);
           }}
           onOpenChange={setSettingsOpen}
+          onThemeChange={(next) => {
+            setTheme(next);
+            writeTheme(next);
+            applyTheme(next);
+          }}
           open={settingsOpen}
+          theme={theme}
         />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               aria-label="Capture menu"
-              className="size-10 shrink-0 rounded-full hover:bg-foreground/10 active:scale-[0.96] aria-expanded:bg-foreground/10"
+              className="size-10 shrink-0 rounded-full hover:bg-foreground/12 active:scale-[0.96] aria-expanded:bg-foreground/12 dark:aria-expanded:bg-foreground/15 dark:hover:bg-foreground/15"
               size="icon"
               title="Capture menu"
               type="button"

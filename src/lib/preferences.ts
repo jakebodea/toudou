@@ -1,8 +1,9 @@
-import type { InboxSort } from "@/lib/types.ts";
+import type { InboxSort, Theme } from "@/lib/types.ts";
 
 const INBOX_SORT_KEY = "towdow.inboxSort";
 const IN_PROGRESS_ENABLED_KEY = "towdow.inProgressEnabled";
 const COPY_SETS_IN_PROGRESS_KEY = "towdow.copySetsInProgress";
+const THEME_KEY = "towdow.theme";
 
 function readBoolean(key: string, fallback: boolean): boolean {
   try {
@@ -62,4 +63,25 @@ export function readCopySetsInProgress(): boolean {
 
 export function writeCopySetsInProgress(enabled: boolean): void {
   writeBoolean(COPY_SETS_IN_PROGRESS_KEY, enabled);
+}
+
+/** Defaults to dark when unset or invalid. */
+export function readTheme(): Theme {
+  try {
+    const value = localStorage.getItem(THEME_KEY);
+    if (value === "light" || value === "dark") {
+      return value;
+    }
+  } catch {
+    // ignore — private mode / unavailable storage
+  }
+  return "dark";
+}
+
+export function writeTheme(theme: Theme): void {
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    // ignore
+  }
 }

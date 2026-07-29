@@ -5,6 +5,22 @@
     <link href="/vite.svg" rel="icon" type="image/svg+xml">
     <meta content="width=device-width, initial-scale=1.0" name="viewport">
     <title>towdow</title>
+    <script>
+    "use strict";
+    (() => {
+      try {
+        const theme = localStorage.getItem("towdow.theme");
+        if (theme === "light") {
+          document.documentElement.style.colorScheme = "light";
+          return;
+        }
+      } catch {
+        // ignore — private mode / unavailable storage
+      }
+      document.documentElement.classList.add("dark");
+      document.documentElement.style.colorScheme = "dark";
+    })();
+    </script>
   </head>
 
   <body>

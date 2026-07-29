@@ -26,7 +26,7 @@ export function CapturePermissions() {
   }
 
   return (
-    <div className="mx-4 mb-2 rounded-2xl bg-background px-3.5 py-3 text-muted-foreground text-sm shadow-sm ring-1 ring-black/5">
+    <div className="mx-4 mb-2 rounded-2xl bg-background px-3.5 py-3 text-muted-foreground text-sm shadow-sm ring-1 ring-foreground/5">
       <p className="leading-snug">
         Double-Shift needs Input Monitoring
         {status.inputMonitoring ? " ✓" : ""} and Accessibility

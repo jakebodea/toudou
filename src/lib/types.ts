@@ -23,6 +23,9 @@ export interface Capture {
 /** Active inbox order by createdAt. */
 export type InboxSort = "oldest" | "newest";
 
+/** App color palette. Defaults to dark. */
+export type Theme = "light" | "dark";
+
 export function captureStatus(capture: Capture): CaptureStatus {
   if (capture.done) {
     return "done";

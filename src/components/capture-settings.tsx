@@ -11,7 +11,7 @@ import {
 import { Label } from "@/components/ui/label.tsx";
 import { Separator } from "@/components/ui/separator.tsx";
 import { Switch } from "@/components/ui/switch.tsx";
-import type { InboxSort } from "@/lib/types.ts";
+import type { InboxSort, Theme } from "@/lib/types.ts";
 import { cn } from "@/lib/utils.ts";
 
 interface CaptureSettingsProps {
@@ -22,7 +22,9 @@ interface CaptureSettingsProps {
   onInboxSortChange: (sort: InboxSort) => void;
   onInProgressEnabledChange: (enabled: boolean) => void;
   onOpenChange: (open: boolean) => void;
+  onThemeChange: (theme: Theme) => void;
   open: boolean;
+  theme: Theme;
 }
 
 export function CaptureSettings({
@@ -32,15 +34,17 @@ export function CaptureSettings({
   onCopySetsInProgressChange,
   onInboxSortChange,
   onInProgressEnabledChange,
+  onThemeChange,
   open,
   onOpenChange,
+  theme,
 }: CaptureSettingsProps) {
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogTrigger asChild>
         <Button
           aria-label="Settings"
-          className="size-10 shrink-0 rounded-full hover:bg-foreground/10 active:scale-[0.96] aria-expanded:bg-foreground/10"
+          className="size-10 shrink-0 rounded-full hover:bg-foreground/12 active:scale-[0.96] aria-expanded:bg-foreground/12 dark:aria-expanded:bg-foreground/15 dark:hover:bg-foreground/15"
           size="icon"
           title="Settings"
           type="button"
@@ -53,13 +57,38 @@ export function CaptureSettings({
         <DialogHeader className="gap-1 px-5 pt-5 pb-4">
           <DialogTitle>Settings</DialogTitle>
           <DialogDescription>
-            Inbox order and optional In Progress workflow.
+            Appearance, inbox order, and optional In Progress workflow.
           </DialogDescription>
         </DialogHeader>
 
         <Separator />
 
         <div className="flex flex-col gap-6 px-5 py-5">
+          <section className="flex flex-col gap-3">
+            <div className="flex flex-col gap-0.5">
+              <h3 className="font-medium text-sm">Appearance</h3>
+              <p className="text-muted-foreground text-xs leading-relaxed">
+                Dark is the default palette. Switch anytime.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted/70 p-1">
+              <SortOption
+                label="Dark"
+                onSelect={() => {
+                  onThemeChange("dark");
+                }}
+                pressed={theme === "dark"}
+              />
+              <SortOption
+                label="Light"
+                onSelect={() => {
+                  onThemeChange("light");
+                }}
+                pressed={theme === "light"}
+              />
+            </div>
+          </section>
+
           <section className="flex flex-col gap-3">
             <div className="flex flex-col gap-0.5">
               <h3 className="font-medium text-sm">Inbox</h3>
@@ -129,8 +158,8 @@ function SortOption({ label, onSelect, pressed }: SortOptionProps) {
       className={cn(
         "rounded-lg px-3 py-2 text-center text-sm transition-colors",
         pressed
-          ? "bg-background font-medium text-foreground shadow-sm ring-1 ring-black/5"
-          : "text-muted-foreground hover:text-foreground"
+          ? "bg-background font-medium text-foreground shadow-sm ring-1 ring-foreground/5"
+          : "text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
       )}
       onClick={onSelect}
       type="button"

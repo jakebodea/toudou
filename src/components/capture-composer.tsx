@@ -292,13 +292,13 @@ export function CaptureComposer({
               ))}
             </div>
           ) : null}
-          <InputGroup className="h-auto min-h-10 rounded-2xl border-0 bg-background shadow-sm ring-1 ring-black/5 transition-[box-shadow] duration-150 has-[[data-slot=input-group-control]:focus-visible]:border-transparent has-[[data-slot=input-group-control]:focus-visible]:shadow-md has-[[data-slot=input-group-control]:focus-visible]:ring-foreground/10 dark:bg-background">
+          <InputGroup className="h-auto min-h-10 rounded-2xl border-0 bg-background shadow-sm ring-1 ring-foreground/5 transition-[box-shadow] duration-150 has-[[data-slot=input-group-control]:focus-visible]:border-transparent has-[[data-slot=input-group-control]:focus-visible]:shadow-md has-[[data-slot=input-group-control]:focus-visible]:ring-foreground/10">
             {previewUrl ? (
               <InputGroupAddon align="block-start">
                 <div className="flex items-start gap-2">
                   <img
                     alt="Pending attachment"
-                    className="h-14 w-14 rounded-xl object-cover ring-1 ring-black/5"
+                    className="h-14 w-14 rounded-xl object-cover ring-1 ring-foreground/5"
                     draggable={false}
                     height={56}
                     src={previewUrl}

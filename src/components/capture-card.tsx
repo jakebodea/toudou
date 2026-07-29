@@ -547,7 +547,7 @@ export function CaptureCard({
     <div
       className={cn(
         "rounded-2xl bg-background shadow-sm ring-1 transition-[box-shadow,ring] duration-150",
-        selected ? "ring-foreground/25" : "ring-black/5",
+        selected ? "ring-foreground/25" : "ring-foreground/5",
         focused && "ring-2 ring-foreground/35",
         capture.done && "opacity-65",
         isInProgress && inProgressEnabled && "shadow-md ring-foreground/12"
