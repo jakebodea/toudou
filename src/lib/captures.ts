@@ -14,6 +14,15 @@ export function filterCaptures(
   if (q.length === 0) {
     return [...captures];
   }
+  if (q.startsWith("#")) {
+    const tagQuery = q.slice(1);
+    if (tagQuery.length === 0) {
+      return [...captures];
+    }
+    return captures.filter((capture) =>
+      capture.tags.some((tag) => tag === tagQuery || tag.startsWith(tagQuery))
+    );
+  }
   return captures.filter((capture) => {
     const haystack = `${capture.body} ${capture.source} ${capture.tags.join(" ")}`;
     return haystack.toLowerCase().includes(q);

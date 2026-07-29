@@ -1,4 +1,4 @@
-import { PencilIcon } from "lucide-react";
+import { PencilIcon, XIcon } from "lucide-react";
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -26,6 +26,7 @@ interface CaptureCardProps {
   checking?: boolean;
   inProgressEnabled?: boolean;
   onCopied?: () => void;
+  onFilterTag: (tag: string) => void;
   onSave: (id: string, body: string, tags: string[]) => void;
   onSetStatus: (id: string, status: CaptureStatus) => void;
   onToggleSelect: (id: string) => void;
@@ -161,6 +162,8 @@ interface CaptureTagsProps {
   onAddingTag: (open: boolean) => void;
   onCancelTag: () => void;
   onCommitTag: () => void;
+  onFilterTag: (tag: string) => void;
+  onRemoveTag: (tag: string) => void;
   onTagDraftChange: (value: string) => void;
   source: string;
   tagDraft: string;
@@ -174,6 +177,8 @@ function CaptureTags({
   onAddingTag,
   onCancelTag,
   onCommitTag,
+  onFilterTag,
+  onRemoveTag,
   onTagDraftChange,
   source,
   tagDraft,
@@ -188,11 +193,37 @@ function CaptureTags({
       ) : null}
       {tags.map((tag) => (
         <Badge
-          className="h-5 rounded-full border-border/60 bg-transparent px-2 font-normal text-[10px] text-muted-foreground/90"
+          className="group/tag h-5 rounded-full border-border/60 bg-transparent py-0 pr-2 pl-2 font-normal text-[10px] text-muted-foreground/90 transition-[padding] duration-150 ease-out hover:bg-muted/60 hover:pr-1 hover:text-foreground has-[:focus-visible]:pr-1"
           key={tag}
           variant="outline"
         >
-          {tag}
+          <button
+            className="max-w-36 truncate outline-none"
+            onClick={(event) => {
+              event.stopPropagation();
+              onFilterTag(tag);
+            }}
+            type="button"
+          >
+            {tag}
+          </button>
+          <button
+            aria-label={`Remove ${tag}`}
+            className={cn(
+              "inline-flex h-3.5 w-0 shrink-0 items-center justify-center overflow-hidden rounded-full text-muted-foreground/70",
+              "opacity-0 transition-[width,opacity,margin] duration-150 ease-out",
+              "hover:bg-foreground/8 hover:text-foreground",
+              "group-hover/tag:ml-0.5 group-hover/tag:w-3.5 group-hover/tag:opacity-100",
+              "focus-visible:ml-0.5 focus-visible:w-3.5 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50"
+            )}
+            onClick={(event) => {
+              event.stopPropagation();
+              onRemoveTag(tag);
+            }}
+            type="button"
+          >
+            <XIcon className="size-2.5 shrink-0" />
+          </button>
         </Badge>
       ))}
       {done ? null : (
@@ -328,6 +359,7 @@ export function CaptureCard({
   inProgressEnabled = false,
   selected,
   onCopied,
+  onFilterTag,
   onSetStatus,
   onToggleSelect,
   onSave,
@@ -443,6 +475,11 @@ export function CaptureCard({
     setAddingTag(false);
   };
 
+  const removeTag = (tag: string) => {
+    const nextTags = capture.tags.filter((item) => item !== tag);
+    onSave(capture.id, capture.body, nextTags);
+  };
+
   const commitTag = () => {
     if (skipTagBlur.current) {
       skipTagBlur.current = false;
@@ -551,6 +588,8 @@ export function CaptureCard({
             onAddingTag={setAddingTag}
             onCancelTag={cancelTag}
             onCommitTag={commitTag}
+            onFilterTag={onFilterTag}
+            onRemoveTag={removeTag}
             onTagDraftChange={setTagDraft}
             source={capture.source}
             tagDraft={tagDraft}

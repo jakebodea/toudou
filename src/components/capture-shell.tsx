@@ -485,8 +485,12 @@ export function CaptureShell() {
   };
 
   const saveCapture = (id: string, body: string, tags: string[]) => {
+    const current = captures.find((capture) => capture.id === id);
+    if (!current) {
+      return;
+    }
     const trimmed = body.trim();
-    if (trimmed.length === 0) {
+    if (trimmed.length === 0 && current.kind !== "image") {
       return;
     }
 
@@ -505,6 +509,10 @@ export function CaptureShell() {
       return;
     }
     apply();
+  };
+
+  const filterByTag = (tag: string) => {
+    setQuery(`#${tag}`);
   };
 
   const copySelected = async () => {
@@ -540,6 +548,7 @@ export function CaptureShell() {
       onCopied={() => {
         handleCopied(capture.id);
       }}
+      onFilterTag={filterByTag}
       onSave={saveCapture}
       onSetStatus={setStatus}
       onToggleSelect={toggleSelect}

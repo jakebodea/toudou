@@ -58,7 +58,21 @@ function imageFileFromClipboard(data: DataTransfer | null): File | null {
 }
 
 function normalizeTag(raw: string): string {
-  return raw.trim().toLowerCase().replace(LEADING_HASH, "");
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(LEADING_HASH, "")
+    .replace(MULTI_SPACE, "-");
+}
+
+function insertAtCaret(
+  value: string,
+  caret: number,
+  selectionEnd: number,
+  insertion: string
+): { next: string; nextCaret: number } {
+  const next = `${value.slice(0, caret)}${insertion}${value.slice(selectionEnd)}`;
+  return { next, nextCaret: caret + insertion.length };
 }
 
 function stripLoneHash(value: string): string {
@@ -78,11 +92,10 @@ export function CaptureComposer({
   const [pendingImage, setPendingImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [highlight, setHighlight] = useState(0);
-  const [menuOpen, setMenuOpen] = useState(false);
 
   const hashQuery = useMemo(
-    () => (menuOpen ? activeHashQuery(value, caret) : null),
-    [caret, menuOpen, value]
+    () => activeHashQuery(value, caret),
+    [caret, value]
   );
 
   const availableTags = useMemo(
@@ -170,7 +183,6 @@ export function CaptureComposer({
     setValue(next);
     setCaret(nextCaret);
     setHighlight(0);
-    setMenuOpen(false);
     focusCaret(nextCaret);
   };
 
@@ -179,20 +191,19 @@ export function CaptureComposer({
     inputRef.current?.focus();
   };
 
-  const closeTagMenu = (stripHash = false) => {
-    if (stripHash) {
-      const query = activeHashQuery(value, caret);
-      if (query) {
-        const before = value.slice(0, query.start);
-        const after = value.slice(caret);
-        const next = `${before}${after}`;
-        const nextCaret = before.length;
-        setValue(next);
-        setCaret(nextCaret);
-        focusCaret(nextCaret);
-      }
+  const closeTagMenu = () => {
+    const query = activeHashQuery(value, caret);
+    if (!query) {
+      return;
     }
-    setMenuOpen(false);
+    const before = value.slice(0, query.start);
+    const after = value.slice(caret);
+    const next = `${before}${after}`;
+    const nextCaret = before.length;
+    setValue(next);
+    setCaret(nextCaret);
+    setHighlight(0);
+    focusCaret(nextCaret);
   };
 
   const submit = () => {
@@ -210,7 +221,6 @@ export function CaptureComposer({
     setCaret(0);
     setPendingTags([]);
     setPendingImage(null);
-    setMenuOpen(false);
   };
 
   const handleEnter = () => {
@@ -229,14 +239,7 @@ export function CaptureComposer({
   };
 
   return (
-    <Popover
-      onOpenChange={(open) => {
-        if (!open) {
-          setMenuOpen(false);
-        }
-      }}
-      open={showSuggestions}
-    >
+    <Popover open={showSuggestions}>
       <PopoverAnchor asChild>
         <form
           className="flex flex-col gap-1.5"
@@ -306,44 +309,43 @@ export function CaptureComposer({
               aria-expanded={showSuggestions}
               aria-label="Add a note or a prompt"
               className="field-sizing-content max-h-40 min-h-10 px-3 py-2.5 md:text-sm"
-              onBlur={() => {
-                window.setTimeout(() => {
-                  if (document.activeElement === inputRef.current) {
-                    return;
-                  }
-                  setMenuOpen(false);
-                }, 120);
-              }}
               onChange={(event) => {
                 const next = event.target.value;
                 setValue(next);
                 const nextCaret = event.target.selectionStart ?? next.length;
                 setCaret(nextCaret);
                 setHighlight(0);
-                setMenuOpen(activeHashQuery(next, nextCaret) !== null);
               }}
               onClick={(event) => {
                 syncCaret(event.currentTarget);
-                setMenuOpen(
-                  activeHashQuery(
-                    event.currentTarget.value,
-                    event.currentTarget.selectionStart ?? 0
-                  ) !== null
-                );
               }}
               onFocus={(event) => {
                 syncCaret(event.currentTarget);
-                setMenuOpen(
-                  activeHashQuery(
-                    event.currentTarget.value,
-                    event.currentTarget.selectionStart ?? 0
-                  ) !== null
-                );
               }}
               onKeyDown={(event) => {
-                if (event.key === "Escape" && menuOpen) {
+                const el = event.currentTarget;
+                const selectionStart = el.selectionStart ?? caret;
+                const selectionEnd = el.selectionEnd ?? selectionStart;
+                const hashActive =
+                  activeHashQuery(value, selectionStart) !== null;
+
+                if (event.key === "Escape" && hashActive) {
                   event.preventDefault();
-                  closeTagMenu(true);
+                  closeTagMenu();
+                  return;
+                }
+                if (event.key === " " && hashActive) {
+                  event.preventDefault();
+                  const { next, nextCaret } = insertAtCaret(
+                    value,
+                    selectionStart,
+                    selectionEnd,
+                    "-"
+                  );
+                  setValue(next);
+                  setCaret(nextCaret);
+                  setHighlight(0);
+                  focusCaret(nextCaret);
                   return;
                 }
                 if (event.key === "Enter" && !event.shiftKey) {
@@ -364,12 +366,33 @@ export function CaptureComposer({
                   setHighlight(
                     (prev) => (prev - 1 + optionTags.length) % optionTags.length
                   );
+                }
+              }}
+              onPaste={(event) => {
+                const el = event.currentTarget;
+                const selectionStart = el.selectionStart ?? caret;
+                const selectionEnd = el.selectionEnd ?? selectionStart;
+                if (activeHashQuery(value, selectionStart) === null) {
                   return;
                 }
-                if (event.key === "Tab") {
-                  event.preventDefault();
-                  applyTag(selectedOption);
+                const text = event.clipboardData?.getData("text");
+                if (!text) {
+                  return;
                 }
+                event.preventDefault();
+                const insertion = text
+                  .replace(MULTI_SPACE, "-")
+                  .replace(/#/g, "");
+                const { next, nextCaret } = insertAtCaret(
+                  value,
+                  selectionStart,
+                  selectionEnd,
+                  insertion
+                );
+                setValue(next);
+                setCaret(nextCaret);
+                setHighlight(0);
+                focusCaret(nextCaret);
               }}
               onSelect={(event) => {
                 syncCaret(event.currentTarget);
@@ -390,6 +413,15 @@ export function CaptureComposer({
       <PopoverContent
         align="start"
         className="min-w-56 p-0"
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+        }}
+        onFocusOutside={(event) => {
+          event.preventDefault();
+        }}
+        onInteractOutside={(event) => {
+          event.preventDefault();
+        }}
         onOpenAutoFocus={(event) => {
           event.preventDefault();
         }}
