@@ -68,10 +68,17 @@ export function CaptureSettings({
             <div className="flex flex-col gap-0.5">
               <h3 className="font-medium text-sm">Appearance</h3>
               <p className="text-muted-foreground text-xs leading-relaxed">
-                Dark is the default palette. Switch anytime.
+                Follows your system by default. Override with Dark or Light.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted/70 p-1">
+            <div className="grid grid-cols-3 gap-1 rounded-xl bg-muted/70 p-1">
+              <SortOption
+                label="System"
+                onSelect={() => {
+                  onThemeChange("system");
+                }}
+                pressed={theme === "system"}
+              />
               <SortOption
                 label="Dark"
                 onSelect={() => {

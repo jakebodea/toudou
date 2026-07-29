@@ -65,17 +65,17 @@ export function writeCopySetsInProgress(enabled: boolean): void {
   writeBoolean(COPY_SETS_IN_PROGRESS_KEY, enabled);
 }
 
-/** Defaults to dark when unset or invalid. */
+/** Defaults to system when unset or invalid. */
 export function readTheme(): Theme {
   try {
     const value = localStorage.getItem(THEME_KEY);
-    if (value === "light" || value === "dark") {
+    if (value === "light" || value === "dark" || value === "system") {
       return value;
     }
   } catch {
     // ignore — private mode / unavailable storage
   }
-  return "dark";
+  return "system";
 }
 
 export function writeTheme(theme: Theme): void {

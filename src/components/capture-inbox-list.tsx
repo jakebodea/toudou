@@ -15,6 +15,7 @@ import { Kbd, KbdGroup } from "@/components/ui/kbd.tsx";
 import {
   clearAllStaggerDelay,
   LIST_CLEAR_EXIT_TRANSITION,
+  LIST_ENTER_TRANSITION,
   LIST_EXIT_TRANSITION,
 } from "@/lib/list-motion.ts";
 import type { Capture } from "@/lib/types.ts";
@@ -162,7 +163,10 @@ function clearCardTransition(
   listLayoutTransition: Transition
 ) {
   if (!exitingClear) {
-    return listLayoutTransition;
+    return {
+      ...LIST_ENTER_TRANSITION,
+      layout: listLayoutTransition,
+    };
   }
   return {
     ...LIST_CLEAR_EXIT_TRANSITION,
@@ -202,7 +206,7 @@ function ActiveCaptureList({
             initial={
               sharedLayout || reduceMotion
                 ? false
-                : { opacity: 0, scale: 0.98, y: 6 }
+                : { opacity: 0, scale: 0.98, y: 10 }
             }
             key={capture.id}
             layout={layoutEnabled && !clearingAll ? "position" : false}

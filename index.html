@@ -8,17 +8,23 @@
     <script>
     "use strict";
     (() => {
+      let theme = "system";
       try {
-        const theme = localStorage.getItem("towdow.theme");
-        if (theme === "light") {
-          document.documentElement.style.colorScheme = "light";
-          return;
+        const stored = localStorage.getItem("towdow.theme");
+        if (stored === "light" || stored === "dark" || stored === "system") {
+          theme = stored;
         }
       } catch {
         // ignore — private mode / unavailable storage
       }
-      document.documentElement.classList.add("dark");
-      document.documentElement.style.colorScheme = "dark";
+      const dark =
+        theme === "dark" ||
+        (theme !== "light" &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches);
+      if (dark) {
+        document.documentElement.classList.add("dark");
+      }
+      document.documentElement.style.colorScheme = dark ? "dark" : "light";
     })();
     </script>
   </head>

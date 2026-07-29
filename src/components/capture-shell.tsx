@@ -88,7 +88,7 @@ import {
   updateCaptureBody,
   updateCaptureTags,
 } from "@/lib/storage.ts";
-import { applyTheme } from "@/lib/theme.ts";
+import { applyTheme, subscribeSystemTheme } from "@/lib/theme.ts";
 import {
   type Capture,
   type CaptureStatus,
@@ -196,6 +196,16 @@ export function CaptureShell() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    applyTheme(theme);
+    if (theme !== "system") {
+      return;
+    }
+    return subscribeSystemTheme(() => {
+      applyTheme("system");
+    });
+  }, [theme]);
 
   useEffect(() => {
     if (!(ready && isTauriRuntime())) {
@@ -927,7 +937,18 @@ export function CaptureShell() {
 
       <ScrollArea className="min-h-0 flex-1">
         {/* Bottom pad tracks floating footer height so the last cards clear the composer. */}
-        <div style={{ paddingBottom: footerPad }}>
+        <div
+          onPointerDown={(event) => {
+            if (
+              event.target instanceof Element &&
+              event.target.closest("[data-capture-id]")
+            ) {
+              return;
+            }
+            setFocusedId(null);
+          }}
+          style={{ paddingBottom: footerPad }}
+        >
           <CaptureInboxList
             active={active}
             clearingAll={clearingAll}
