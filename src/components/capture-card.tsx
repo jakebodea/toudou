@@ -38,7 +38,8 @@ interface CaptureBodyProps {
   editing: boolean;
   onCancelEdit: () => void;
   onCommitEdit: () => void;
-  onCopy: () => void;
+  onCopyImage: () => void;
+  onCopyText: () => void;
   onDraftChange: (value: string) => void;
   onStartEdit: () => void;
   onToggleSelect: () => void;
@@ -51,103 +52,106 @@ function CaptureBody({
   editing,
   onCancelEdit,
   onCommitEdit,
-  onCopy,
+  onCopyImage,
+  onCopyText,
   onDraftChange,
   onStartEdit,
   onToggleSelect,
   textareaRef,
 }: CaptureBodyProps) {
   const imageSrc = captureImageSrc(capture);
-
-  if (capture.kind === "image") {
-    return (
-      <button
-        className="w-full text-left"
-        onClick={(event) => {
-          if (event.metaKey || event.ctrlKey) {
-            onToggleSelect();
-            return;
-          }
-          onCopy();
-        }}
-        type="button"
-      >
-        {imageSrc ? (
-          <img
-            alt=""
-            className="h-48 w-full rounded-xl object-cover"
-            draggable={false}
-            height={192}
-            src={imageSrc}
-            width={320}
-          />
-        ) : (
-          <p className="text-[15px] text-muted-foreground">Attachment</p>
-        )}
-      </button>
-    );
-  }
-
-  if (editing && !capture.done) {
-    return (
-      <Textarea
-        aria-label="Edit capture"
-        className={cn(
-          "min-h-0 resize-none rounded-none border-0 bg-transparent p-0 text-[15px] leading-snug shadow-none",
-          "focus-visible:border-transparent focus-visible:ring-0",
-          "md:text-[15px]",
-          capture.done &&
-            "text-muted-foreground line-through decoration-foreground/15"
-        )}
-        onBlur={onCommitEdit}
-        onChange={(event) => {
-          onDraftChange(event.target.value);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            event.preventDefault();
-            onCancelEdit();
-            return;
-          }
-          if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault();
-            event.currentTarget.blur();
-          }
-        }}
-        ref={textareaRef}
-        value={draft}
-      />
-    );
-  }
+  const hasImage = capture.kind === "image";
 
   return (
-    <button
-      className="text-left"
-      onClick={(event) => {
-        if (event.metaKey || event.ctrlKey) {
-          onToggleSelect();
-          return;
-        }
-        onCopy();
-      }}
-      onContextMenu={(event) => {
-        event.preventDefault();
-        if (!capture.done) {
-          onStartEdit();
-        }
-      }}
-      type="button"
-    >
-      <p
-        className={cn(
-          "whitespace-pre-wrap text-[15px] leading-snug",
-          capture.done &&
-            "text-muted-foreground line-through decoration-foreground/15"
-        )}
-      >
-        {capture.body}
-      </p>
-    </button>
+    <div className="flex w-full flex-col gap-2">
+      {hasImage ? (
+        <button
+          className="w-full text-left"
+          onClick={(event) => {
+            if (event.metaKey || event.ctrlKey) {
+              onToggleSelect();
+              return;
+            }
+            onCopyImage();
+          }}
+          type="button"
+        >
+          {imageSrc ? (
+            <img
+              alt=""
+              className="h-48 w-full rounded-xl object-cover"
+              draggable={false}
+              height={192}
+              src={imageSrc}
+              width={320}
+            />
+          ) : (
+            <p className="text-[15px] text-muted-foreground">Attachment</p>
+          )}
+        </button>
+      ) : null}
+
+      {editing && !capture.done ? (
+        <Textarea
+          aria-label="Edit capture"
+          className={cn(
+            "min-h-0 resize-none rounded-none border-0 bg-transparent p-0 text-[15px] leading-snug shadow-none",
+            "focus-visible:border-transparent focus-visible:ring-0",
+            "md:text-[15px]",
+            capture.done &&
+              "text-muted-foreground line-through decoration-foreground/15"
+          )}
+          onBlur={onCommitEdit}
+          onChange={(event) => {
+            onDraftChange(event.target.value);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              onCancelEdit();
+              return;
+            }
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              event.currentTarget.blur();
+            }
+          }}
+          ref={textareaRef}
+          spellCheck
+          value={draft}
+        />
+      ) : null}
+
+      {!editing && (capture.body.length > 0 || !hasImage) ? (
+        <button
+          className="text-left"
+          onClick={(event) => {
+            if (event.metaKey || event.ctrlKey) {
+              onToggleSelect();
+              return;
+            }
+            onCopyText();
+          }}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            if (!capture.done) {
+              onStartEdit();
+            }
+          }}
+          type="button"
+        >
+          <p
+            className={cn(
+              "whitespace-pre-wrap text-[15px] leading-snug",
+              capture.done &&
+                "text-muted-foreground line-through decoration-foreground/15"
+            )}
+          >
+            {capture.body}
+          </p>
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -376,7 +380,7 @@ export function CaptureCard({
   }, [capture.done, capture.body]);
 
   const startEdit = () => {
-    if (capture.done || capture.kind === "image") {
+    if (capture.done) {
       return;
     }
     setDraft(capture.body);
@@ -395,7 +399,7 @@ export function CaptureCard({
       return;
     }
     const next = draft.trim();
-    if (next.length === 0) {
+    if (next.length === 0 && capture.kind !== "image") {
       setDraft(capture.body);
       setEditing(false);
       return;
@@ -406,25 +410,25 @@ export function CaptureCard({
     setEditing(false);
   };
 
-  const copyBody = () => {
-    if (capture.kind === "image") {
-      const src = captureImageSrc(capture);
-      if (!src) {
-        return;
-      }
-      fetch(src)
-        .then((response) => response.blob())
-        .then((blob) =>
-          navigator.clipboard.write([
-            new ClipboardItem({ [blob.type || "image/png"]: blob }),
-          ])
-        )
-        .then(() => {
-          onCopied?.();
-        })
-        .catch(() => undefined);
+  const copyImage = () => {
+    const src = captureImageSrc(capture);
+    if (!src) {
       return;
     }
+    fetch(src)
+      .then((response) => response.blob())
+      .then((blob) =>
+        navigator.clipboard.write([
+          new ClipboardItem({ [blob.type || "image/png"]: blob }),
+        ])
+      )
+      .then(() => {
+        onCopied?.();
+      })
+      .catch(() => undefined);
+  };
+
+  const copyText = () => {
     navigator.clipboard.writeText(capture.body).then(
       () => {
         onCopied?.();
@@ -532,7 +536,8 @@ export function CaptureCard({
             editing={editing}
             onCancelEdit={cancelEdit}
             onCommitEdit={commitEdit}
-            onCopy={copyBody}
+            onCopyImage={copyImage}
+            onCopyText={copyText}
             onDraftChange={setDraft}
             onStartEdit={startEdit}
             onToggleSelect={() => {
@@ -553,7 +558,7 @@ export function CaptureCard({
             tags={capture.tags}
           />
         </div>
-        {editing || capture.done || capture.kind === "image" ? null : (
+        {editing || capture.done ? null : (
           <Button
             aria-label="Edit capture"
             className="mt-0.5 shrink-0 text-muted-foreground"

@@ -202,7 +202,7 @@ fn fire_capture() {
         return;
     };
 
-    // Tiny delay so the second Shift-up finishes before AX/clipboard reads.
+    // Tiny delay so the second Shift-up finishes before AX selection reads.
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(40));
         crate::capture::run_capture(&app);

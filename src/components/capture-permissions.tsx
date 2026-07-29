@@ -30,9 +30,10 @@ export function CapturePermissions() {
       <p className="leading-snug">
         Double-Shift needs Input Monitoring
         {status.inputMonitoring ? " ✓" : ""} and Accessibility
-        {status.accessibility ? " ✓" : ""} for selection.{" "}
-        <span className="text-foreground">⌘⇧Space</span> still works with
-        clipboard fallback.
+        {status.accessibility ? " ✓" : ""} to read the selection. Nothing is
+        captured unless text is highlighted.{" "}
+        <span className="text-foreground">⌘⇧Space</span> uses the same
+        selection-only path.
       </p>
       <Button
         className="mt-2 h-8 rounded-full"

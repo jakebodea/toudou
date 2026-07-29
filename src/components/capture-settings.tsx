@@ -40,11 +40,11 @@ export function CaptureSettings({
       <DialogTrigger asChild>
         <Button
           aria-label="Settings"
-          className="size-10 shrink-0 rounded-full active:scale-[0.96]"
+          className="size-10 shrink-0 rounded-full hover:bg-foreground/10 active:scale-[0.96] aria-expanded:bg-foreground/10"
           size="icon"
           title="Settings"
           type="button"
-          variant="secondary"
+          variant="ghost"
         >
           <SettingsIcon className="size-4" />
         </Button>

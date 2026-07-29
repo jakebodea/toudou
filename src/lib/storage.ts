@@ -55,7 +55,7 @@ export function isTauriRuntime(): boolean {
 }
 
 export function captureImageSrc(capture: Capture): string | null {
-  if (capture.kind !== "image" || !capture.imagePath) {
+  if (!capture.imagePath) {
     return null;
   }
   if (
@@ -83,10 +83,11 @@ export async function createCapture(capture: Capture): Promise<Capture> {
 export async function createImageCapture(
   bytesBase64: string,
   mime: string,
-  source = "Towdow"
+  source = "towdow",
+  body = ""
 ): Promise<Capture> {
   const row = unwrap(
-    await commands.createImageCapture(bytesBase64, mime, source)
+    await commands.createImageCapture(bytesBase64, mime, source, body)
   );
   return fromWire(row);
 }
@@ -122,6 +123,10 @@ export async function setCaptureStatus(
 
 export async function purgeExpiredDone(cutoffMs: number): Promise<number> {
   return unwrap(await commands.purgeExpiredDone(cutoffMs));
+}
+
+export async function clearAllCaptures(): Promise<number> {
+  return unwrap(await commands.clearAllCaptures());
 }
 
 export async function seedDemoCaptures(seed: Capture[]): Promise<boolean> {

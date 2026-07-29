@@ -320,6 +320,32 @@ pub fn purge_done_before(conn: &Connection, cutoff_ms: i64) -> Result<usize, Str
     Ok(changed)
 }
 
+pub fn clear_all_captures(conn: &Connection) -> Result<usize, String> {
+    let mut stmt = conn
+        .prepare(
+            "
+            SELECT image_path FROM captures
+            WHERE image_path IS NOT NULL
+            ",
+        )
+        .map_err(|e| e.to_string())?;
+    let paths = stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect::<Vec<_>>();
+
+    let changed = conn
+        .execute("DELETE FROM captures", [])
+        .map_err(|e| e.to_string())?;
+
+    for path in paths {
+        let _ = std::fs::remove_file(PathBuf::from(path));
+    }
+
+    Ok(changed)
+}
+
 pub fn count_captures(conn: &Connection) -> Result<i64, String> {
     conn.query_row("SELECT COUNT(*) FROM captures", [], |row| row.get(0))
         .map_err(|e| e.to_string())
@@ -507,5 +533,56 @@ mod tests {
         assert!(seed_if_empty(&conn, &seed).unwrap());
         assert!(!seed_if_empty(&conn, &seed).unwrap());
         assert_eq!(count_captures(&conn).unwrap(), 2);
+    }
+
+    #[test]
+    fn clear_all_removes_rows_and_image_files() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("clear.sqlite3");
+        let image = dir.path().join("shot.png");
+        fs::write(&image, b"png-bytes").unwrap();
+
+        let conn = open(&path).unwrap();
+        create_capture(&conn, &sample("a", "one", 1)).unwrap();
+        create_capture(
+            &conn,
+            &NewCapture {
+                id: "img".into(),
+                body: String::new(),
+                source: "Test".into(),
+                section: "inbox".into(),
+                tags: vec![],
+                created_at: 2,
+                done: true,
+                done_at: Some(10),
+                kind: "image".into(),
+                image_path: Some(image.to_string_lossy().into_owned()),
+                in_progress: false,
+            },
+        )
+        .unwrap();
+        create_capture(
+            &conn,
+            &NewCapture {
+                id: "wip".into(),
+                body: "working".into(),
+                source: "Test".into(),
+                section: "inbox".into(),
+                tags: vec![],
+                created_at: 3,
+                done: false,
+                done_at: None,
+                kind: "text".into(),
+                image_path: None,
+                in_progress: true,
+            },
+        )
+        .unwrap();
+
+        let removed = clear_all_captures(&conn).unwrap();
+        assert_eq!(removed, 3);
+        assert!(!image.exists());
+        assert_eq!(count_captures(&conn).unwrap(), 0);
+        assert!(list_captures(&conn).unwrap().is_empty());
     }
 }

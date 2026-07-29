@@ -1,6 +1,6 @@
 use super::{CapturePayload, PermissionStatus};
 use crate::capture::double_shift;
-use objc2_app_kit::{NSPasteboard, NSPasteboardTypeString, NSWorkspace};
+use objc2_app_kit::NSWorkspace;
 use objc2_application_services::{
     kAXTrustedCheckOptionPrompt, AXError, AXIsProcessTrusted, AXIsProcessTrustedWithOptions,
     AXUIElement,
@@ -31,20 +31,15 @@ pub fn start_double_shift_listener(app: AppHandle) {
 }
 
 pub fn read_capture_payload() -> Option<CapturePayload> {
-    let source = frontmost_app_name();
-    if let Some(body) = selected_text() {
-        let trimmed = body.trim().to_string();
-        if !trimmed.is_empty() {
-            return Some(CapturePayload { body: trimmed, source });
-        }
+    let body = selected_text()?;
+    let trimmed = body.trim().to_string();
+    if trimmed.is_empty() {
+        return None;
     }
-    if let Some(body) = clipboard_text() {
-        let trimmed = body.trim().to_string();
-        if !trimmed.is_empty() {
-            return Some(CapturePayload { body: trimmed, source });
-        }
-    }
-    None
+    Some(CapturePayload {
+        body: trimmed,
+        source: frontmost_app_name(),
+    })
 }
 
 fn frontmost_app_name() -> String {
@@ -79,10 +74,4 @@ unsafe fn copy_ax_attr(element: &AXUIElement, attribute: &str) -> Option<CFRetai
         return None;
     }
     Some(unsafe { CFRetained::from_raw(NonNull::new_unchecked(value.cast_mut())) })
-}
-
-fn clipboard_text() -> Option<String> {
-    let pasteboard = NSPasteboard::generalPasteboard();
-    let value = unsafe { pasteboard.stringForType(NSPasteboardTypeString) }?;
-    Some(value.to_string())
 }

@@ -23,9 +23,9 @@ async createCapture(capture: NewCapture) : Promise<Result<Capture, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-async createImageCapture(bytesBase64: string, mime: string, source: string) : Promise<Result<Capture, string>> {
+async createImageCapture(bytesBase64: string, mime: string, source: string, body: string) : Promise<Result<Capture, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("create_image_capture", { bytesBase64, mime, source }) };
+    return { status: "ok", data: await TAURI_INVOKE("create_image_capture", { bytesBase64, mime, source, body }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -66,6 +66,14 @@ async setCaptureStatus(id: string, status: string) : Promise<Result<null, string
 async purgeExpiredDone(cutoffMs: number) : Promise<Result<number, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("purge_expired_done", { cutoffMs }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async clearAllCaptures() : Promise<Result<number, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clear_all_captures") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };

@@ -1,4 +1,4 @@
-# Towdow
+# towdow
 
 Personal desktop capture inbox (“toe doe”). macOS-first.
 
@@ -32,8 +32,8 @@ Editor: Biome format-on-save via `.vscode/settings.json` (install the recommende
 
 ## Capture (macOS)
 
-- **Double-Shift** — selection (Accessibility) then clipboard text; needs Input Monitoring
-- **⌘⇧Space** — same path (works without Input Monitoring; clipboard if no AX)
+- **Double-Shift** — selected text only (Accessibility); needs Input Monitoring. No selection → no capture
+- **⌘⇧Space** — same selection-only path (works without Input Monitoring)
 - Close window → hides to tray (Quit from tray menu)
 
 ## Release
@@ -45,10 +45,10 @@ bun run tauri build
 open src-tauri/target/release/bundle/dmg
 ```
 
-That produces `Towdow.app` + a `.dmg`. Drag the app wherever you want (Applications is optional). Unsigned builds will show a Gatekeeper warning — right-click → Open the first time, or clear quarantine:
+That produces `towdow.app` + a `.dmg`. Drag the app wherever you want (Applications is optional). Unsigned builds will show a Gatekeeper warning — right-click → Open the first time, or clear quarantine:
 
 ```sh
-xattr -cr /path/to/Towdow.app
+xattr -cr /path/to/towdow.app
 ```
 
 ### GitHub Release (draft)

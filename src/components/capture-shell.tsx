@@ -1,5 +1,10 @@
 import { listen } from "@tauri-apps/api/event";
-import { ClipboardIcon, MoreHorizontalIcon, SearchIcon } from "lucide-react";
+import {
+  MoreHorizontalIcon,
+  SearchIcon,
+  TextSelectIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CaptureCard } from "@/components/capture-card.tsx";
@@ -9,6 +14,15 @@ import { CapturePermissions } from "@/components/capture-permissions.tsx";
 import { CaptureSettings } from "@/components/capture-settings.tsx";
 import { CaptureToast } from "@/components/capture-toast.tsx";
 import { Button } from "@/components/ui/button.tsx";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,6 +38,7 @@ import { commands } from "@/lib/bindings.ts";
 import {
   activeCaptures,
   captureListLine,
+  collectUsedTags,
   doneCaptures,
   inProgressCaptures,
   newId,
@@ -43,6 +58,7 @@ import {
 } from "@/lib/preferences.ts";
 import { seedCaptures } from "@/lib/seed.ts";
 import {
+  clearAllCaptures,
   createImageCapture,
   fileToBase64,
   isTauriRuntime,
@@ -77,6 +93,8 @@ export function CaptureShell() {
   const [toastMessage, setToastMessage] = useState("Captured");
   const [doneOpen, setDoneOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [clearAllOpen, setClearAllOpen] = useState(false);
+  const [clearingAll, setClearingAll] = useState(false);
   const [inboxSort, setInboxSort] = useState<InboxSort>(() => readInboxSort());
   const [inProgressEnabled, setInProgressEnabled] = useState(() =>
     readInProgressEnabled()
@@ -85,6 +103,8 @@ export function CaptureShell() {
     readCopySetsInProgress()
   );
   const [checkingIds, setCheckingIds] = useState<Set<string>>(() => new Set());
+  const [footerPad, setFooterPad] = useState(96);
+  const [footerEl, setFooterEl] = useState<HTMLElement | null>(null);
   const toastTimer = useRef<number | null>(null);
   const layoutEnabled = !reduceMotion;
   const sharedLayout = Boolean(
@@ -101,6 +121,7 @@ export function CaptureShell() {
     [captures, query, inboxSort, inProgressEnabled]
   );
   const done = useMemo(() => doneCaptures(captures, query), [captures, query]);
+  const knownTags = useMemo(() => collectUsedTags(captures), [captures]);
   const isVacant = captures.length === 0;
   const noMatches =
     captures.length > 0 &&
@@ -220,6 +241,21 @@ export function CaptureShell() {
     []
   );
 
+  useEffect(() => {
+    if (!footerEl) {
+      return;
+    }
+    const syncPad = () => {
+      setFooterPad(Math.ceil(footerEl.getBoundingClientRect().height));
+    };
+    syncPad();
+    const observer = new ResizeObserver(syncPad);
+    observer.observe(footerEl);
+    return () => {
+      observer.disconnect();
+    };
+  }, [footerEl]);
+
   const showToast = (message = "Captured") => {
     setToastMessage(message);
     setToastVisible(true);
@@ -232,7 +268,7 @@ export function CaptureShell() {
     }, TOAST_MS);
   };
 
-  const addCapture = (body: string, source = "Towdow") => {
+  const addCapture = (body: string, source = "towdow", tags: string[] = []) => {
     const capture: Capture = {
       body,
       createdAt: Date.now(),
@@ -244,7 +280,7 @@ export function CaptureShell() {
       kind: "text",
       section: "inbox",
       source,
-      tags: [],
+      tags,
     };
 
     if (isTauriRuntime()) {
@@ -261,12 +297,24 @@ export function CaptureShell() {
     showToast();
   };
 
-  const addImageCapture = (file: File) => {
+  const addImageCapture = (file: File, body = "", tags: string[] = []) => {
     if (isTauriRuntime()) {
       fileToBase64(file)
         .then((bytesBase64) =>
-          createImageCapture(bytesBase64, file.type || "image/png")
+          createImageCapture(
+            bytesBase64,
+            file.type || "image/png",
+            "towdow",
+            body
+          )
         )
+        .then(async (saved) => {
+          if (tags.length === 0) {
+            return saved;
+          }
+          await updateCaptureTags(saved.id, tags);
+          return { ...saved, tags };
+        })
         .then((saved) => {
           setCaptures((prev) => [saved, ...prev]);
           showToast("Captured");
@@ -282,7 +330,7 @@ export function CaptureShell() {
         return;
       }
       const capture: Capture = {
-        body: "",
+        body,
         createdAt: Date.now(),
         done: false,
         doneAt: null,
@@ -291,8 +339,8 @@ export function CaptureShell() {
         inProgress: false,
         kind: "image",
         section: "inbox",
-        source: "Towdow",
-        tags: [],
+        source: "towdow",
+        tags,
       };
       setCaptures((prev) => [capture, ...prev]);
       showToast("Captured");
@@ -300,17 +348,22 @@ export function CaptureShell() {
     reader.readAsDataURL(file);
   };
 
+  const submitComposer = (body: string, image: File | null, tags: string[]) => {
+    if (image) {
+      addImageCapture(image, body, tags);
+      return;
+    }
+    addCapture(body, "towdow", tags);
+  };
+
   const runCaptureNow = () => {
     if (isTauriRuntime()) {
       commands.captureNow().catch(() => {
-        addCapture(
-          "Simulated global capture — selection or clipboard.",
-          "Safari"
-        );
+        addCapture("Simulated global capture — selection only.", "Safari");
       });
       return;
     }
-    addCapture("Simulated global capture — selection or clipboard.", "Safari");
+    addCapture("Simulated global capture — selection only.", "Safari");
   };
 
   const applyStatus = (id: string, status: CaptureStatus) => {
@@ -376,6 +429,32 @@ export function CaptureShell() {
     setStatus(id, "in_progress");
   };
 
+  const clearAll = () => {
+    if (clearingAll || captures.length === 0) {
+      return;
+    }
+
+    const apply = () => {
+      setCaptures([]);
+      setSelectedIds(new Set());
+      setCheckingIds(new Set());
+      setClearAllOpen(false);
+      setClearingAll(false);
+      showToast("Cleared");
+    };
+
+    setClearingAll(true);
+    if (isTauriRuntime()) {
+      clearAllCaptures()
+        .then(apply)
+        .catch(() => {
+          setClearingAll(false);
+        });
+      return;
+    }
+    apply();
+  };
+
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -429,8 +508,9 @@ export function CaptureShell() {
 
   if (!ready) {
     return (
-      <div className="flex h-svh items-center justify-center bg-muted/45 text-muted-foreground text-sm">
-        Loading…
+      <div className="flex h-svh flex-col overflow-hidden overscroll-none bg-muted/45 text-muted-foreground text-sm">
+        <div aria-hidden className="h-[28px] shrink-0" data-tauri-drag-region />
+        <div className="flex flex-1 items-center justify-center">Loading…</div>
       </div>
     );
   }
@@ -451,10 +531,11 @@ export function CaptureShell() {
   );
 
   return (
-    <div className="relative flex h-svh flex-col bg-muted/45">
+    <div className="relative flex h-svh flex-col overflow-hidden overscroll-none bg-muted/45">
+      <div aria-hidden className="h-[28px] shrink-0" data-tauri-drag-region />
       <CaptureToast message={toastMessage} visible={toastVisible} />
 
-      <header className="flex items-center gap-2 px-4 pt-4 pb-2">
+      <header className="flex shrink-0 items-center gap-2 overscroll-none px-4 pt-2 pb-2">
         <div className="relative min-w-0 flex-1">
           <SearchIcon className="pointer-events-none absolute top-1/2 left-3.5 size-3.5 -translate-y-1/2 text-muted-foreground/70" />
           <Input
@@ -487,11 +568,11 @@ export function CaptureShell() {
           <DropdownMenuTrigger asChild>
             <Button
               aria-label="Capture menu"
-              className="size-10 shrink-0 rounded-full active:scale-[0.96]"
+              className="size-10 shrink-0 rounded-full hover:bg-foreground/10 active:scale-[0.96] aria-expanded:bg-foreground/10"
               size="icon"
               title="Capture menu"
               type="button"
-              variant="secondary"
+              variant="ghost"
             >
               <MoreHorizontalIcon className="size-4" />
             </Button>
@@ -503,8 +584,19 @@ export function CaptureShell() {
                 runCaptureNow();
               }}
             >
-              <ClipboardIcon />
-              Capture selection / clipboard
+              <TextSelectIcon />
+              Capture selection
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              disabled={isVacant}
+              onClick={() => {
+                setClearAllOpen(true);
+              }}
+              variant="destructive"
+            >
+              <Trash2Icon />
+              Clear all
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">
@@ -524,33 +616,74 @@ export function CaptureShell() {
             </DropdownMenuLabel>
           </DropdownMenuContent>
         </DropdownMenu>
+        <Dialog
+          onOpenChange={(open) => {
+            if (clearingAll) {
+              return;
+            }
+            setClearAllOpen(open);
+          }}
+          open={clearAllOpen}
+        >
+          <DialogContent className="sm:max-w-sm" showCloseButton>
+            <DialogHeader>
+              <DialogTitle>Clear all captures?</DialogTitle>
+              <DialogDescription>
+                Permanently deletes every capture and attached image. This
+                cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button disabled={clearingAll} type="button" variant="outline">
+                  Cancel
+                </Button>
+              </DialogClose>
+              <Button
+                disabled={clearingAll || isVacant}
+                onClick={clearAll}
+                type="button"
+                variant="destructive"
+              >
+                {clearingAll ? "Clearing…" : "Clear all"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </header>
 
       <ScrollArea className="min-h-0 flex-1">
-        {/* Padding lives inside the viewport so ring/shadow aren't clipped on LR edges */}
-        <CaptureInboxList
-          active={active}
-          done={done}
-          doneOpen={doneOpen}
-          inProgress={inProgress}
-          inProgressEnabled={inProgressEnabled}
-          isVacant={isVacant}
-          layoutEnabled={layoutEnabled}
-          listExitTransition={LIST_EXIT_TRANSITION}
-          listLayoutTransition={LIST_LAYOUT_TRANSITION}
-          noMatches={noMatches}
-          onDoneOpenChange={setDoneOpen}
-          query={query}
-          reduceMotion={reduceMotion}
-          renderCard={renderCard}
-          sharedLayout={sharedLayout}
-        />
+        {/* Bottom pad tracks floating footer height so the last cards clear the composer. */}
+        <div style={{ paddingBottom: footerPad }}>
+          <CaptureInboxList
+            active={active}
+            done={done}
+            doneOpen={doneOpen}
+            inProgress={inProgress}
+            inProgressEnabled={inProgressEnabled}
+            isVacant={isVacant}
+            layoutEnabled={layoutEnabled}
+            listExitTransition={LIST_EXIT_TRANSITION}
+            listLayoutTransition={LIST_LAYOUT_TRANSITION}
+            noMatches={noMatches}
+            onDoneOpenChange={setDoneOpen}
+            query={query}
+            reduceMotion={reduceMotion}
+            renderCard={renderCard}
+            sharedLayout={sharedLayout}
+          />
+        </div>
       </ScrollArea>
 
-      <footer className="flex flex-col gap-2 pt-1 pb-4">
-        <CapturePermissions />
+      <footer
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col gap-2 overscroll-none bg-transparent pt-1 pb-4"
+        ref={setFooterEl}
+      >
+        <div className="pointer-events-auto">
+          <CapturePermissions />
+        </div>
         {selectedIds.size > 0 ? (
-          <div className="fade-in slide-in-from-bottom-1 mx-4 flex animate-in items-center justify-between rounded-2xl bg-foreground px-3.5 py-2.5 text-background text-sm duration-150">
+          <div className="fade-in slide-in-from-bottom-1 pointer-events-auto mx-4 flex animate-in items-center justify-between rounded-2xl bg-foreground px-3.5 py-2.5 text-background text-sm duration-150">
             <span className="flex items-center gap-2">
               {selectedIds.size} selected
               <span className="hidden text-background/60 text-xs sm:inline">
@@ -569,11 +702,11 @@ export function CaptureShell() {
             </Button>
           </div>
         ) : null}
-        <div className="px-4">
+        <div className="pointer-events-auto px-4">
           <CaptureComposer
-            onPasteImage={addImageCapture}
-            onSubmit={(body) => {
-              addCapture(body);
+            knownTags={knownTags}
+            onSubmit={({ body, image, tags }) => {
+              submitComposer(body, image, tags);
             }}
           />
         </div>

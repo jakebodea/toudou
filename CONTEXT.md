@@ -1,11 +1,11 @@
-# Towdow
+# towdow
 
 Personal desktop capture inbox: grab selected content from anywhere, tag and filter it, copy it back out later.
 
 ## Language
 
 **Capture**:
-An item of content saved into Towdow — text, an image, or a URL-as-text — created from a global hotkey (selection or clipboard fallback) or from the in-app composer.
+An item of content saved into towdow — text, an image, or a URL-as-text — created from a global hotkey when text is selected, or from the in-app composer. No selection → nothing is captured.
 _Avoid_: Todo, task, note (unless talking about the UI metaphor casually)
 
 **Composer**:

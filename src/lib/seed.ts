@@ -52,7 +52,7 @@ export function seedCaptures(): Capture[] {
       inProgress: false,
       kind: "text",
       section: "inbox",
-      source: "Towdow",
+      source: "towdow",
       tags: [],
     },
     {

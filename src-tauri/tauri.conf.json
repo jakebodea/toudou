@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Towdow",
+  "productName": "towdow",
   "version": "0.1.0",
   "identifier": "dev.towdow.app",
   "build": {
@@ -12,9 +12,12 @@
   "app": {
     "windows": [
       {
-        "title": "Towdow",
+        "title": "towdow",
         "width": 420,
-        "height": 720
+        "height": 720,
+        "hiddenTitle": true,
+        "titleBarStyle": "Overlay",
+        "backgroundColor": "#FBFBFB"
       }
     ],
     "security": {

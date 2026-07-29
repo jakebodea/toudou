@@ -28,6 +28,7 @@ fn specta_builder() -> Builder {
         db_commands::set_capture_done,
         db_commands::set_capture_status,
         db_commands::purge_expired_done,
+        db_commands::clear_all_captures,
         db_commands::seed_demo_captures,
         capture::capture_now,
         capture::capture_permission_status,
@@ -48,12 +49,28 @@ fn export_typescript_bindings(builder: &Builder) {
         .expect("Failed to export typescript bindings");
 }
 
+/// Enable macOS WKWebView "Check Spelling While Typing" (red underlines).
+/// Must run before the webview is created or it only takes effect on the next launch.
+#[cfg(target_os = "macos")]
+fn enable_macos_spellcheck() {
+    use objc2_foundation::{NSString, NSUserDefaults};
+
+    let defaults = NSUserDefaults::standardUserDefaults();
+    let key = NSString::from_str("WebContinuousSpellCheckingEnabled");
+    defaults.setBool_forKey(true, &key);
+    let _ = defaults.synchronize();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let specta = specta_builder();
 
     #[cfg(debug_assertions)]
     export_typescript_bindings(&specta);
+
+    // Before Builder creates the webview — see WebContinuousSpellCheckingEnabled notes above.
+    #[cfg(target_os = "macos")]
+    enable_macos_spellcheck();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -73,14 +90,14 @@ pub fn run() {
             let conn = db::open(&db_path)?;
             app.manage(Db(std::sync::Mutex::new(conn)));
 
-            let show = MenuItem::with_id(app, "show", "Show Towdow", true, None::<&str>)?;
+            let show = MenuItem::with_id(app, "show", "Show towdow", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
 
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
-                .tooltip("Towdow")
+                .tooltip("towdow")
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => show_main_window(app),
                     "quit" => app.exit(0),
@@ -156,6 +173,7 @@ mod db_commands {
         bytes_base64: String,
         mime: String,
         source: String,
+        body: String,
     ) -> Result<Capture, String> {
         let bytes = STANDARD
             .decode(bytes_base64.trim())
@@ -175,7 +193,7 @@ mod db_commands {
 
         let capture = NewCapture {
             id: id.clone(),
-            body: String::new(),
+            body,
             source,
             section: "inbox".to_string(),
             tags: vec![],
@@ -247,6 +265,13 @@ mod db_commands {
     ) -> Result<usize, String> {
         let conn = state.0.lock().map_err(|e| e.to_string())?;
         db::purge_done_before(&conn, cutoff_ms)
+    }
+
+    #[tauri::command]
+    #[specta::specta]
+    pub fn clear_all_captures(state: tauri::State<'_, Db>) -> Result<usize, String> {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        db::clear_all_captures(&conn)
     }
 
     #[tauri::command]
