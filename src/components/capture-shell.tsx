@@ -45,6 +45,7 @@ import {
   numberedList,
 } from "@/lib/captures.ts";
 import {
+  clearAllAnimationMs,
   LIST_EXIT_TRANSITION,
   LIST_LAYOUT_TRANSITION,
 } from "@/lib/list-motion.ts";
@@ -106,6 +107,7 @@ export function CaptureShell() {
   const [footerPad, setFooterPad] = useState(96);
   const [footerEl, setFooterEl] = useState<HTMLElement | null>(null);
   const toastTimer = useRef<number | null>(null);
+  const clearAllTimer = useRef<number | null>(null);
   const layoutEnabled = !reduceMotion;
   const sharedLayout = Boolean(
     layoutEnabled && (doneOpen || inProgressEnabled)
@@ -236,6 +238,9 @@ export function CaptureShell() {
     () => () => {
       if (toastTimer.current !== null) {
         window.clearTimeout(toastTimer.current);
+      }
+      if (clearAllTimer.current !== null) {
+        window.clearTimeout(clearAllTimer.current);
       }
     },
     []
@@ -434,16 +439,28 @@ export function CaptureShell() {
       return;
     }
 
+    const startedAt = performance.now();
+    const visibleCount =
+      active.length + inProgress.length + (doneOpen ? done.length : 0);
+    const animMs = reduceMotion ? 0 : clearAllAnimationMs(visibleCount);
+
     const apply = () => {
-      setCaptures([]);
-      setSelectedIds(new Set());
-      setCheckingIds(new Set());
-      setClearAllOpen(false);
-      setClearingAll(false);
-      showToast("Cleared");
+      const remaining = Math.max(0, animMs - (performance.now() - startedAt));
+      if (clearAllTimer.current !== null) {
+        window.clearTimeout(clearAllTimer.current);
+      }
+      clearAllTimer.current = window.setTimeout(() => {
+        clearAllTimer.current = null;
+        setCaptures([]);
+        setSelectedIds(new Set());
+        setCheckingIds(new Set());
+        setClearingAll(false);
+        showToast("Cleared");
+      }, remaining);
     };
 
     setClearingAll(true);
+    setClearAllOpen(false);
     if (isTauriRuntime()) {
       clearAllCaptures()
         .then(apply)
@@ -657,6 +674,7 @@ export function CaptureShell() {
         <div style={{ paddingBottom: footerPad }}>
           <CaptureInboxList
             active={active}
+            clearingAll={clearingAll}
             done={done}
             doneOpen={doneOpen}
             inProgress={inProgress}
