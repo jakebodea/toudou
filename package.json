@@ -9,6 +9,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.27.0",
+    "motion": "^12.43.0",
     "radix-ui": "^1.6.7",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -39,7 +40,10 @@
     "fix": "ultracite fix",
     "prepare": "lefthook install",
     "typecheck": "tsc --noEmit",
-    "build:app": "tauri build"
+    "build:app": "tauri build",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "bindings": "cargo test --manifest-path src-tauri/Cargo.toml export_typescript_bindings_file",
+    "check:bindings": "bun run bindings && git diff --exit-code -- src/lib/bindings.ts"
   },
   "type": "module",
   "version": "0.1.0",

@@ -1,6 +1,11 @@
-import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { ClipboardIcon, MoreHorizontalIcon, SearchIcon } from "lucide-react";
+import {
+  AnimatePresence,
+  LayoutGroup,
+  motion,
+  useReducedMotion,
+} from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CaptureCard } from "@/components/capture-card.tsx";
 import { CaptureComposer } from "@/components/capture-composer.tsx";
@@ -18,20 +23,31 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.tsx";
 import { Input } from "@/components/ui/input.tsx";
 import { Kbd, KbdGroup } from "@/components/ui/kbd.tsx";
 import { ScrollArea } from "@/components/ui/scroll-area.tsx";
+import { commands } from "@/lib/bindings.ts";
 import {
   activeCaptures,
+  captureListLine,
   doneCaptures,
   newId,
   numberedList,
 } from "@/lib/captures.ts";
+import {
+  LIST_EXIT_TRANSITION,
+  LIST_LAYOUT_TRANSITION,
+} from "@/lib/list-motion.ts";
+import { readInboxSort, writeInboxSort } from "@/lib/preferences.ts";
 import { seedCaptures } from "@/lib/seed.ts";
 import {
+  createImageCapture,
+  fileToBase64,
   isTauriRuntime,
   listCaptures,
   createCapture as persistCreate,
@@ -41,75 +57,15 @@ import {
   updateCaptureBody,
   updateCaptureTags,
 } from "@/lib/storage.ts";
-import type { Capture } from "@/lib/types.ts";
+import type { Capture, InboxSort } from "@/lib/types.ts";
 
 const TOAST_MS = 1200;
-const COMPLETE_MS = 280;
-const MOVE_MS = 320;
-const MOVE_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-function measureCaptureCard(id: string): DOMRect | undefined {
-  const el = document.querySelector(`[data-capture-id="${id}"]`);
-  return el?.getBoundingClientRect();
-}
-
-/**
- * Fly a fixed clone from the card's pre-move rect to its new list slot.
- * Avoids AccordionContent overflow clipping a mid-FLIP transform.
- */
-function flyCaptureCard(id: string, first: DOMRect | undefined) {
-  if (!first) {
-    return;
-  }
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    return;
-  }
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      const el = document.querySelector(`[data-capture-id="${id}"]`);
-      if (!(el instanceof HTMLElement)) {
-        return;
-      }
-      const last = el.getBoundingClientRect();
-      const dx = last.left - first.left;
-      const dy = last.top - first.top;
-      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) {
-        return;
-      }
-
-      const clone = el.cloneNode(true);
-      if (!(clone instanceof HTMLElement)) {
-        return;
-      }
-      clone.removeAttribute("data-capture-id");
-      clone.style.position = "fixed";
-      clone.style.left = `${first.left}px`;
-      clone.style.top = `${first.top}px`;
-      clone.style.width = `${first.width}px`;
-      clone.style.margin = "0";
-      clone.style.zIndex = "50";
-      clone.style.pointerEvents = "none";
-      document.body.appendChild(clone);
-
-      el.style.opacity = "0";
-      const clear = () => {
-        clone.remove();
-        el.style.opacity = "";
-      };
-      const animation = clone.animate(
-        [
-          { transform: "translate(0px, 0px)" },
-          { transform: `translate(${dx}px, ${dy}px)` },
-        ],
-        { duration: MOVE_MS, easing: MOVE_EASE, fill: "forwards" }
-      );
-      animation.finished.then(clear, clear);
-    });
-  });
-}
+/** Let the checkmark paint before the card leaves the inbox. */
+const CHECK_ACK_MS = 220;
 
 export function CaptureShell() {
+  const reduceMotion = useReducedMotion();
   const [captures, setCaptures] = useState<Capture[]>([]);
   const [ready, setReady] = useState(false);
   const [query, setQuery] = useState("");
@@ -117,13 +73,15 @@ export function CaptureShell() {
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState("Captured");
   const [doneOpen, setDoneOpen] = useState(false);
-  const [exitingIds, setExitingIds] = useState<Set<string>>(() => new Set());
-  const [enteringIds, setEnteringIds] = useState<Set<string>>(() => new Set());
+  const [inboxSort, setInboxSort] = useState<InboxSort>(() => readInboxSort());
+  const [checkingIds, setCheckingIds] = useState<Set<string>>(() => new Set());
   const toastTimer = useRef<number | null>(null);
+  const layoutEnabled = !reduceMotion;
+  const sharedLayout = Boolean(doneOpen && layoutEnabled);
 
   const active = useMemo(
-    () => activeCaptures(captures, query),
-    [captures, query]
+    () => activeCaptures(captures, query, inboxSort),
+    [captures, query, inboxSort]
   );
   const done = useMemo(() => doneCaptures(captures, query), [captures, query]);
   const isVacant = captures.length === 0;
@@ -170,21 +128,13 @@ export function CaptureShell() {
     let cancelled = false;
     const unlisten = listen<{ id: string; body: string; source: string }>(
       "capture://created",
-      (event) => {
+      () => {
         listCaptures()
           .then((rows) => {
             if (cancelled) {
               return;
             }
             setCaptures(rows);
-            setEnteringIds((prev) => new Set(prev).add(event.payload.id));
-            window.setTimeout(() => {
-              setEnteringIds((prev) => {
-                const next = new Set(prev);
-                next.delete(event.payload.id);
-                return next;
-              });
-            }, COMPLETE_MS);
             setToastVisible(true);
             if (toastTimer.current !== null) {
               window.clearTimeout(toastTimer.current);
@@ -262,17 +212,6 @@ export function CaptureShell() {
     }, TOAST_MS);
   };
 
-  const pulseEnter = (id: string) => {
-    setEnteringIds((prev) => new Set(prev).add(id));
-    window.setTimeout(() => {
-      setEnteringIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }, COMPLETE_MS);
-  };
-
   const addCapture = (body: string, source = "Towdow") => {
     const capture: Capture = {
       body,
@@ -280,6 +219,8 @@ export function CaptureShell() {
       done: false,
       doneAt: null,
       id: newId(),
+      imagePath: null,
+      kind: "text",
       section: "inbox",
       source,
       tags: [],
@@ -289,7 +230,6 @@ export function CaptureShell() {
       persistCreate(capture)
         .then((saved) => {
           setCaptures((prev) => [saved, ...prev]);
-          pulseEnter(saved.id);
           showToast();
         })
         .catch(() => undefined);
@@ -297,13 +237,50 @@ export function CaptureShell() {
     }
 
     setCaptures((prev) => [capture, ...prev]);
-    pulseEnter(capture.id);
     showToast();
+  };
+
+  const addImageCapture = (file: File) => {
+    if (isTauriRuntime()) {
+      fileToBase64(file)
+        .then((bytesBase64) =>
+          createImageCapture(bytesBase64, file.type || "image/png")
+        )
+        .then((saved) => {
+          setCaptures((prev) => [saved, ...prev]);
+          showToast("Captured");
+        })
+        .catch(() => undefined);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === "string" ? reader.result : null;
+      if (!dataUrl) {
+        return;
+      }
+      const capture: Capture = {
+        body: "",
+        createdAt: Date.now(),
+        done: false,
+        doneAt: null,
+        id: newId(),
+        imagePath: dataUrl,
+        kind: "image",
+        section: "inbox",
+        source: "Towdow",
+        tags: [],
+      };
+      setCaptures((prev) => [capture, ...prev]);
+      showToast("Captured");
+    };
+    reader.readAsDataURL(file);
   };
 
   const runCaptureNow = () => {
     if (isTauriRuntime()) {
-      invoke("capture_now").catch(() => {
+      commands.captureNow().catch(() => {
         addCapture(
           "Simulated global capture — selection or clipboard.",
           "Safari"
@@ -331,46 +308,39 @@ export function CaptureShell() {
       next.delete(id);
       return next;
     });
-    setExitingIds((prev) => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
   };
 
   const toggleDone = (id: string) => {
     const current = captures.find((capture) => capture.id === id);
-    if (!current || exitingIds.has(id)) {
+    if (!current || checkingIds.has(id)) {
       return;
     }
     const nextDone = !current.done;
     const nextDoneAt = nextDone ? Date.now() : null;
-    // When DONE is open, slide the card into/out of that section (FLIP).
-    // When closed, keep the collapse-out exit on complete.
-    const shouldFlip = doneOpen;
-    const first = shouldFlip ? measureCaptureCard(id) : undefined;
 
     const persist = () => {
-      const after = () => {
-        applyDone(id, nextDone, nextDoneAt);
-        if (shouldFlip) {
-          flyCaptureCard(id, first);
-        } else if (!nextDone) {
-          pulseEnter(id);
-        }
-      };
       if (isTauriRuntime()) {
         setCaptureDone(id, nextDone, nextDoneAt)
-          .then(after)
+          .then(() => {
+            applyDone(id, nextDone, nextDoneAt);
+          })
           .catch(() => undefined);
         return;
       }
-      after();
+      applyDone(id, nextDone, nextDoneAt);
     };
 
-    if (nextDone && !shouldFlip) {
-      setExitingIds((prev) => new Set(prev).add(id));
-      window.setTimeout(persist, COMPLETE_MS);
+    // Completing: show the check briefly, then move. Restore is immediate.
+    if (nextDone) {
+      setCheckingIds((prev) => new Set(prev).add(id));
+      window.setTimeout(() => {
+        persist();
+        setCheckingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }, CHECK_ACK_MS);
       return;
     }
     persist();
@@ -412,15 +382,19 @@ export function CaptureShell() {
   };
 
   const copySelected = async () => {
-    const bodies = captures
-      .filter((capture) => selectedIds.has(capture.id) && !capture.done)
-      .sort((a, b) => b.createdAt - a.createdAt)
-      .map((capture) => capture.body);
-    if (bodies.length === 0) {
+    const lines = active
+      .filter((capture) => selectedIds.has(capture.id))
+      .map((capture) => captureListLine(capture));
+    if (lines.length === 0) {
       return;
     }
-    await navigator.clipboard.writeText(numberedList(bodies));
+    await navigator.clipboard.writeText(numberedList(lines));
     setSelectedIds(new Set());
+  };
+
+  const setSort = (sort: InboxSort) => {
+    setInboxSort(sort);
+    writeInboxSort(sort);
   };
 
   if (!ready) {
@@ -472,6 +446,23 @@ export function CaptureShell() {
               Capture selection / clipboard
             </DropdownMenuItem>
             <DropdownMenuSeparator />
+            <DropdownMenuLabel>Inbox sort</DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              onValueChange={(value) => {
+                if (value === "oldest" || value === "newest") {
+                  setSort(value);
+                }
+              }}
+              value={inboxSort}
+            >
+              <DropdownMenuRadioItem value="oldest">
+                Oldest first
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="newest">
+                Newest first
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator />
             <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">
               <span className="flex items-center gap-1.5">
                 Global
@@ -493,88 +484,134 @@ export function CaptureShell() {
 
       <ScrollArea className="min-h-0 flex-1">
         {/* Padding lives inside the viewport so ring/shadow aren't clipped on LR edges */}
-        <div className="flex flex-col gap-2.5 px-4 py-3 pb-6">
-          {isVacant ? (
-            <div className="flex flex-col items-start gap-2 px-2 py-14 text-muted-foreground">
-              <p className="font-medium text-foreground text-sm">
-                Your capture inbox is empty
+        <LayoutGroup id="towdow-captures">
+          <div className="flex flex-col gap-2.5 px-4 py-3 pb-6">
+            {isVacant ? (
+              <div className="flex flex-col items-start gap-2 px-2 py-14 text-muted-foreground">
+                <p className="font-medium text-foreground text-sm">
+                  Your capture inbox is empty
+                </p>
+                <p className="max-w-[16rem] text-sm leading-relaxed">
+                  Drop something in below, or grab text from any app with{" "}
+                  <KbdGroup className="mx-0.5 inline-flex">
+                    <Kbd>⇧</Kbd>
+                    <Kbd>⇧</Kbd>
+                  </KbdGroup>
+                  .
+                </p>
+              </div>
+            ) : null}
+
+            {noMatches ? (
+              <p className="px-2 py-8 text-muted-foreground text-sm">
+                Nothing matches “{query}”.
               </p>
-              <p className="max-w-[16rem] text-sm leading-relaxed">
-                Drop something in below, or grab text from any app with{" "}
-                <KbdGroup className="mx-0.5 inline-flex">
-                  <Kbd>⇧</Kbd>
-                  <Kbd>⇧</Kbd>
-                </KbdGroup>
-                .
-              </p>
-            </div>
-          ) : null}
+            ) : null}
 
-          {noMatches ? (
-            <p className="px-2 py-8 text-muted-foreground text-sm">
-              Nothing matches “{query}”.
-            </p>
-          ) : null}
+            <AnimatePresence initial={false} mode="popLayout">
+              {active.map((capture) => (
+                <motion.div
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={
+                    sharedLayout || reduceMotion
+                      ? undefined
+                      : {
+                          opacity: 0,
+                          scale: 0.97,
+                          transition: LIST_EXIT_TRANSITION,
+                          y: -6,
+                        }
+                  }
+                  initial={
+                    sharedLayout || reduceMotion
+                      ? false
+                      : { opacity: 0, scale: 0.98, y: 6 }
+                  }
+                  key={capture.id}
+                  layout={layoutEnabled ? "position" : false}
+                  layoutId={sharedLayout ? capture.id : undefined}
+                  transition={LIST_LAYOUT_TRANSITION}
+                >
+                  <CaptureCard
+                    capture={capture}
+                    checking={checkingIds.has(capture.id)}
+                    onCopied={() => {
+                      showToast("Copied");
+                    }}
+                    onSave={saveCapture}
+                    onToggleDone={toggleDone}
+                    onToggleSelect={toggleSelect}
+                    selected={selectedIds.has(capture.id)}
+                  />
+                </motion.div>
+              ))}
+            </AnimatePresence>
 
-          {active.map((capture) => (
-            <CaptureCard
-              capture={capture}
-              entering={enteringIds.has(capture.id)}
-              exiting={exitingIds.has(capture.id)}
-              key={capture.id}
-              onCopied={() => {
-                showToast("Copied");
-              }}
-              onSave={saveCapture}
-              onToggleDone={toggleDone}
-              onToggleSelect={toggleSelect}
-              selected={selectedIds.has(capture.id)}
-            />
-          ))}
-
-          {(done.length > 0 || doneOpen) && (
-            <Accordion
-              collapsible
-              onValueChange={(value) => {
-                setDoneOpen(value === "done");
-              }}
-              type="single"
-              value={doneOpen ? "done" : ""}
-            >
-              <AccordionItem className="mt-2 border-0" value="done">
-                <AccordionTrigger className="px-1 py-2 text-[11px] text-muted-foreground tracking-[0.1em] hover:no-underline">
-                  DONE
-                  {done.length > 0 ? (
-                    <span className="ml-1.5 font-normal tracking-normal opacity-70">
-                      {done.length}
-                    </span>
-                  ) : null}
-                </AccordionTrigger>
-                <AccordionContent className="flex flex-col gap-2.5 px-0.5 pt-1.5">
-                  {done.length === 0 ? (
-                    <p className="px-1 text-muted-foreground text-sm">
-                      Nothing completed yet.
-                    </p>
-                  ) : (
-                    done.map((capture) => (
-                      <CaptureCard
-                        capture={capture}
-                        key={capture.id}
-                        onCopied={() => {
-                          showToast("Copied");
-                        }}
-                        onSave={saveCapture}
-                        onToggleDone={toggleDone}
-                        onToggleSelect={toggleSelect}
-                        selected={selectedIds.has(capture.id)}
-                      />
-                    ))
-                  )}
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-          )}
-        </div>
+            <AnimatePresence initial={false}>
+              {done.length > 0 || doneOpen ? (
+                <motion.div
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={
+                    reduceMotion
+                      ? undefined
+                      : { opacity: 0, transition: LIST_EXIT_TRANSITION, y: -4 }
+                  }
+                  initial={reduceMotion ? false : { opacity: 0, y: -6 }}
+                  key="done-section"
+                  layout={layoutEnabled ? "position" : false}
+                  transition={LIST_LAYOUT_TRANSITION}
+                >
+                  <Accordion
+                    collapsible
+                    onValueChange={(value) => {
+                      setDoneOpen(value === "done");
+                    }}
+                    type="single"
+                    value={doneOpen ? "done" : ""}
+                  >
+                    <AccordionItem className="mt-2 border-0" value="done">
+                      <AccordionTrigger className="px-1 py-2 text-[11px] text-muted-foreground tracking-[0.1em] hover:no-underline">
+                        DONE
+                        {done.length > 0 ? (
+                          <span className="ml-1.5 font-normal tracking-normal opacity-70">
+                            {done.length}
+                          </span>
+                        ) : null}
+                      </AccordionTrigger>
+                      <AccordionContent className="flex flex-col gap-2.5 px-0.5 pt-1.5">
+                        {done.length === 0 ? (
+                          <p className="px-1 text-muted-foreground text-sm">
+                            Nothing completed yet.
+                          </p>
+                        ) : (
+                          done.map((capture) => (
+                            <motion.div
+                              key={capture.id}
+                              layout={sharedLayout ? "position" : false}
+                              layoutId={sharedLayout ? capture.id : undefined}
+                              transition={LIST_LAYOUT_TRANSITION}
+                            >
+                              <CaptureCard
+                                capture={capture}
+                                onCopied={() => {
+                                  showToast("Copied");
+                                }}
+                                onSave={saveCapture}
+                                onToggleDone={toggleDone}
+                                onToggleSelect={toggleSelect}
+                                selected={selectedIds.has(capture.id)}
+                              />
+                            </motion.div>
+                          ))
+                        )}
+                      </AccordionContent>
+                    </AccordionItem>
+                  </Accordion>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+          </div>
+        </LayoutGroup>
       </ScrollArea>
 
       <footer className="flex flex-col gap-2 pt-1 pb-4">
@@ -601,6 +638,7 @@ export function CaptureShell() {
         ) : null}
         <div className="px-4">
           <CaptureComposer
+            onPasteImage={addImageCapture}
             onSubmit={(body) => {
               addCapture(body);
             }}

@@ -67,7 +67,7 @@ function AccordionContent({
 }: React.ComponentProps<typeof AccordionPrimitive.Content>) {
   return (
     <AccordionPrimitive.Content
-      className="overflow-hidden text-sm data-closed:animate-accordion-up data-open:animate-accordion-down"
+      className="overflow-hidden text-sm data-closed:animate-accordion-up data-open:animate-accordion-down data-open:overflow-visible"
       data-slot="accordion-content"
       {...props}
     >

@@ -5,13 +5,14 @@ import { Button } from "@/components/ui/button.tsx";
 import { Checkbox } from "@/components/ui/checkbox.tsx";
 import { Textarea } from "@/components/ui/textarea.tsx";
 import { parseTags } from "@/lib/captures.ts";
+import { captureImageSrc } from "@/lib/storage.ts";
 import type { Capture } from "@/lib/types.ts";
 import { cn } from "@/lib/utils.ts";
 
 interface CaptureCardProps {
   capture: Capture;
-  entering?: boolean;
-  exiting?: boolean;
+  /** Checked UI before the card moves to Done. */
+  checking?: boolean;
   onCopied?: () => void;
   onSave: (id: string, body: string, tags: string[]) => void;
   onToggleDone: (id: string) => void;
@@ -20,11 +21,9 @@ interface CaptureCardProps {
 }
 
 interface CaptureBodyProps {
-  body: string;
-  done: boolean;
+  capture: Capture;
   draft: string;
   editing: boolean;
-  exiting: boolean;
   onCancelEdit: () => void;
   onCommitEdit: () => void;
   onCopy: () => void;
@@ -35,11 +34,9 @@ interface CaptureBodyProps {
 }
 
 function CaptureBody({
-  body,
-  done,
+  capture,
   draft,
   editing,
-  exiting,
   onCancelEdit,
   onCommitEdit,
   onCopy,
@@ -48,9 +45,38 @@ function CaptureBody({
   onToggleSelect,
   textareaRef,
 }: CaptureBodyProps) {
-  const muted = done || exiting;
+  const imageSrc = captureImageSrc(capture);
 
-  if (editing && !done) {
+  if (capture.kind === "image") {
+    return (
+      <button
+        className="w-full text-left"
+        onClick={(event) => {
+          if (event.metaKey || event.ctrlKey) {
+            onToggleSelect();
+            return;
+          }
+          onCopy();
+        }}
+        type="button"
+      >
+        {imageSrc ? (
+          <img
+            alt=""
+            className="h-48 w-full rounded-xl object-cover"
+            draggable={false}
+            height={192}
+            src={imageSrc}
+            width={320}
+          />
+        ) : (
+          <p className="text-[15px] text-muted-foreground">Attachment</p>
+        )}
+      </button>
+    );
+  }
+
+  if (editing && !capture.done) {
     return (
       <Textarea
         aria-label="Edit capture"
@@ -58,7 +84,8 @@ function CaptureBody({
           "min-h-0 resize-none rounded-none border-0 bg-transparent p-0 text-[15px] leading-snug shadow-none",
           "focus-visible:border-transparent focus-visible:ring-0",
           "md:text-[15px]",
-          muted && "text-muted-foreground line-through decoration-foreground/15"
+          capture.done &&
+            "text-muted-foreground line-through decoration-foreground/15"
         )}
         onBlur={onCommitEdit}
         onChange={(event) => {
@@ -72,7 +99,6 @@ function CaptureBody({
           }
           if (event.key === "Enter" && !event.shiftKey) {
             event.preventDefault();
-            // Blur commits — avoids double-save with onBlur.
             event.currentTarget.blur();
           }
         }}
@@ -94,7 +120,7 @@ function CaptureBody({
       }}
       onContextMenu={(event) => {
         event.preventDefault();
-        if (!done) {
+        if (!capture.done) {
           onStartEdit();
         }
       }}
@@ -103,10 +129,11 @@ function CaptureBody({
       <p
         className={cn(
           "whitespace-pre-wrap text-[15px] leading-snug",
-          muted && "text-muted-foreground line-through decoration-foreground/15"
+          capture.done &&
+            "text-muted-foreground line-through decoration-foreground/15"
         )}
       >
-        {body}
+        {capture.body}
       </p>
     </button>
   );
@@ -239,8 +266,7 @@ function TagAddControl({
 
 export function CaptureCard({
   capture,
-  exiting = false,
-  entering = false,
+  checking = false,
   selected,
   onCopied,
   onToggleDone,
@@ -292,7 +318,7 @@ export function CaptureCard({
   }, [capture.done, capture.body]);
 
   const startEdit = () => {
-    if (capture.done) {
+    if (capture.done || capture.kind === "image") {
       return;
     }
     setDraft(capture.body);
@@ -323,6 +349,24 @@ export function CaptureCard({
   };
 
   const copyBody = () => {
+    if (capture.kind === "image") {
+      const src = captureImageSrc(capture);
+      if (!src) {
+        return;
+      }
+      fetch(src)
+        .then((response) => response.blob())
+        .then((blob) =>
+          navigator.clipboard.write([
+            new ClipboardItem({ [blob.type || "image/png"]: blob }),
+          ])
+        )
+        .then(() => {
+          onCopied?.();
+        })
+        .catch(() => undefined);
+      return;
+    }
     navigator.clipboard.writeText(capture.body).then(
       () => {
         onCopied?.();
@@ -362,88 +406,69 @@ export function CaptureCard({
   return (
     <div
       className={cn(
-        "transition-[grid-template-rows,opacity,transform] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
-        "motion-reduce:transform-none motion-reduce:transition-none",
-        // Grid collapse only while exiting — idle `1fr`+min-h-0 shrinks
-        // cards inside height-constrained parents (e.g. accordion).
-        exiting
-          ? "pointer-events-none grid -translate-y-1 grid-rows-[0fr] opacity-0"
-          : "translate-y-0 opacity-100",
-        entering &&
-          !exiting &&
-          "fade-in slide-in-from-bottom-1 animate-in duration-200"
+        "rounded-2xl bg-background shadow-sm ring-1",
+        selected ? "ring-foreground/25" : "ring-black/5",
+        capture.done && "opacity-65"
       )}
       data-capture-id={capture.id}
     >
-      {/* overflow only while collapsing — otherwise it clips ring/shadow/radius */}
-      <div className={cn(exiting && "min-h-0 overflow-hidden")}>
-        <div
+      <div className="flex items-start gap-3 px-3.5 py-3">
+        <Checkbox
+          aria-label={capture.done ? "Restore capture" : "Mark done"}
+          checked={capture.done || checking}
           className={cn(
-            "rounded-2xl bg-background shadow-sm ring-1",
-            selected ? "ring-foreground/25" : "ring-black/5",
-            capture.done && "opacity-65"
+            "mt-0.5 size-5 rounded-full transition-transform duration-150 ease-out",
+            "motion-reduce:transition-none",
+            (capture.done || checking) && "scale-105"
           )}
-        >
-          <div className="flex items-start gap-3 px-3.5 py-3">
-            <Checkbox
-              aria-label={capture.done ? "Restore capture" : "Mark done"}
-              checked={capture.done || exiting}
-              className={cn(
-                "mt-0.5 size-5 rounded-full transition-transform duration-150 ease-out",
-                "motion-reduce:transition-none",
-                (capture.done || exiting) && "scale-105"
-              )}
-              onCheckedChange={() => {
-                onToggleDone(capture.id);
-              }}
-              onClick={(event) => {
-                event.stopPropagation();
-              }}
-            />
-            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-              <CaptureBody
-                body={capture.body}
-                done={capture.done}
-                draft={draft}
-                editing={editing}
-                exiting={exiting}
-                onCancelEdit={cancelEdit}
-                onCommitEdit={commitEdit}
-                onCopy={copyBody}
-                onDraftChange={setDraft}
-                onStartEdit={startEdit}
-                onToggleSelect={() => {
-                  onToggleSelect(capture.id);
-                }}
-                textareaRef={textareaRef}
-              />
-              <CaptureTags
-                addingTag={addingTag}
-                done={capture.done}
-                onAddingTag={setAddingTag}
-                onCancelTag={cancelTag}
-                onCommitTag={commitTag}
-                onTagDraftChange={setTagDraft}
-                source={capture.source}
-                tagDraft={tagDraft}
-                tagInputRef={tagInputRef}
-                tags={capture.tags}
-              />
-            </div>
-            {editing || capture.done ? null : (
-              <Button
-                aria-label="Edit capture"
-                className="mt-0.5 shrink-0 text-muted-foreground"
-                onClick={startEdit}
-                size="icon-xs"
-                type="button"
-                variant="ghost"
-              >
-                <PencilIcon />
-              </Button>
-            )}
-          </div>
+          disabled={checking}
+          onCheckedChange={() => {
+            onToggleDone(capture.id);
+          }}
+          onClick={(event) => {
+            event.stopPropagation();
+          }}
+        />
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <CaptureBody
+            capture={capture}
+            draft={draft}
+            editing={editing}
+            onCancelEdit={cancelEdit}
+            onCommitEdit={commitEdit}
+            onCopy={copyBody}
+            onDraftChange={setDraft}
+            onStartEdit={startEdit}
+            onToggleSelect={() => {
+              onToggleSelect(capture.id);
+            }}
+            textareaRef={textareaRef}
+          />
+          <CaptureTags
+            addingTag={addingTag}
+            done={capture.done}
+            onAddingTag={setAddingTag}
+            onCancelTag={cancelTag}
+            onCommitTag={commitTag}
+            onTagDraftChange={setTagDraft}
+            source={capture.source}
+            tagDraft={tagDraft}
+            tagInputRef={tagInputRef}
+            tags={capture.tags}
+          />
         </div>
+        {editing || capture.done || capture.kind === "image" ? null : (
+          <Button
+            aria-label="Edit capture"
+            className="mt-0.5 shrink-0 text-muted-foreground"
+            onClick={startEdit}
+            size="icon-xs"
+            type="button"
+            variant="ghost"
+          >
+            <PencilIcon />
+          </Button>
+        )}
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import type { Capture } from "@/lib/types.ts";
+import type { Capture, InboxSort } from "@/lib/types.ts";
 
 const TAG_SPLIT = /[,\s]+/;
 const LEADING_HASH = /^#/;
@@ -19,11 +19,14 @@ export function filterCaptures(
 
 export function activeCaptures(
   captures: readonly Capture[],
-  query: string
+  query: string,
+  sort: InboxSort = "oldest"
 ): Capture[] {
   return filterCaptures(captures, query)
     .filter((capture) => !capture.done)
-    .sort((a, b) => b.createdAt - a.createdAt);
+    .sort((a, b) =>
+      sort === "oldest" ? a.createdAt - b.createdAt : b.createdAt - a.createdAt
+    );
 }
 
 export function doneCaptures(
@@ -37,6 +40,17 @@ export function doneCaptures(
 
 export function numberedList(bodies: readonly string[]): string {
   return bodies.map((body, index) => `${index + 1}. ${body.trim()}`).join("\n");
+}
+
+/** Line for multi-copy; images become a placeholder. */
+export function captureListLine(capture: {
+  body: string;
+  kind: string;
+}): string {
+  if (capture.kind === "image") {
+    return "[Image]";
+  }
+  return capture.body.trim();
 }
 
 export function newId(): string {

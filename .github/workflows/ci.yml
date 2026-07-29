@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: bun install
+
+      - name: Rust tests + regenerate bindings
+        run: bun run test:rust
+
+      - name: Bindings up to date
+        run: git diff --exit-code -- src/lib/bindings.ts
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint
+        run: bun run check

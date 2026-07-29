@@ -1,23 +1,44 @@
-import { PlusIcon } from "lucide-react";
 import { useState } from "react";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-} from "@/components/ui/input-group.tsx";
-import { Kbd } from "@/components/ui/kbd.tsx";
+import { Input } from "@/components/ui/input.tsx";
 
 interface CaptureComposerProps {
+  onPasteImage: (file: File) => void;
   onSubmit: (body: string) => void;
 }
 
-export function CaptureComposer({ onSubmit }: CaptureComposerProps) {
+function imageFileFromClipboard(data: DataTransfer | null): File | null {
+  if (!data) {
+    return null;
+  }
+  for (const item of data.items) {
+    if (item.kind === "file" && item.type.startsWith("image/")) {
+      return item.getAsFile();
+    }
+  }
+  for (const file of data.files) {
+    if (file.type.startsWith("image/")) {
+      return file;
+    }
+  }
+  return null;
+}
+
+export function CaptureComposer({
+  onSubmit,
+  onPasteImage,
+}: CaptureComposerProps) {
   const [value, setValue] = useState("");
-  const [focused, setFocused] = useState(false);
 
   return (
     <form
+      onPaste={(event) => {
+        const file = imageFileFromClipboard(event.clipboardData);
+        if (!file) {
+          return;
+        }
+        event.preventDefault();
+        onPasteImage(file);
+      }}
       onSubmit={(event) => {
         event.preventDefault();
         const next = value.trim();
@@ -28,37 +49,15 @@ export function CaptureComposer({ onSubmit }: CaptureComposerProps) {
         setValue("");
       }}
     >
-      <InputGroup className="h-11 rounded-2xl bg-background shadow-sm">
-        <InputGroupAddon align="inline-start">
-          <InputGroupButton
-            aria-label="Submit note"
-            size="icon-xs"
-            type="submit"
-            variant="secondary"
-          >
-            <PlusIcon />
-          </InputGroupButton>
-        </InputGroupAddon>
-        <InputGroupInput
-          aria-label="Add a note or a prompt"
-          onBlur={() => {
-            setFocused(false);
-          }}
-          onChange={(event) => {
-            setValue(event.target.value);
-          }}
-          onFocus={() => {
-            setFocused(true);
-          }}
-          placeholder="Add a note or a prompt"
-          value={value}
-        />
-        {focused && value.trim().length === 0 ? (
-          <InputGroupAddon align="inline-end">
-            <Kbd className="hidden sm:inline-flex">↵</Kbd>
-          </InputGroupAddon>
-        ) : null}
-      </InputGroup>
+      <Input
+        aria-label="Add a note or a prompt"
+        className="h-10 rounded-full border-0 bg-background/90 px-4 shadow-sm ring-1 ring-black/5 transition-[box-shadow] duration-150 focus-visible:shadow-md focus-visible:ring-foreground/10"
+        onChange={(event) => {
+          setValue(event.target.value);
+        }}
+        placeholder="Add a note, prompt, or paste an image"
+        value={value}
+      />
     </form>
   );
 }

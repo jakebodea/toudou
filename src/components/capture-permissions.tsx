@@ -1,12 +1,7 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button.tsx";
+import { commands, type PermissionStatus } from "@/lib/bindings.ts";
 import { isTauriRuntime } from "@/lib/storage.ts";
-
-interface PermissionStatus {
-  accessibility: boolean;
-  inputMonitoring: boolean;
-}
 
 export function CapturePermissions() {
   const [status, setStatus] = useState<PermissionStatus | null>(null);
@@ -15,7 +10,8 @@ export function CapturePermissions() {
     if (!isTauriRuntime()) {
       return;
     }
-    invoke<PermissionStatus>("capture_permission_status")
+    commands
+      .capturePermissionStatus()
       .then(setStatus)
       .catch(() => undefined);
   }, []);
@@ -41,7 +37,8 @@ export function CapturePermissions() {
       <Button
         className="mt-2 h-8 rounded-full"
         onClick={() => {
-          invoke<PermissionStatus>("request_capture_permissions")
+          commands
+            .requestCapturePermissions()
             .then(setStatus)
             .catch(() => undefined);
         }}

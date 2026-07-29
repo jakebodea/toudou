@@ -1,9 +1,10 @@
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use specta::Type;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct Capture {
     pub id: String,
@@ -14,9 +15,11 @@ pub struct Capture {
     pub done: bool,
     pub done_at: Option<i64>,
     pub created_at: i64,
+    pub kind: String,
+    pub image_path: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct NewCapture {
     pub id: String,
@@ -29,6 +32,14 @@ pub struct NewCapture {
     pub done: bool,
     #[serde(default)]
     pub done_at: Option<i64>,
+    #[serde(default = "default_kind")]
+    pub kind: String,
+    #[serde(default)]
+    pub image_path: Option<String>,
+}
+
+fn default_kind() -> String {
+    "text".to_string()
 }
 
 pub struct Db(pub Mutex<Connection>);
@@ -76,6 +87,21 @@ fn migrate(conn: &Connection) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     }
 
+    let version: i32 = conn
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+
+    if version < 2 {
+        conn.execute_batch(
+            "
+            ALTER TABLE captures ADD COLUMN kind TEXT NOT NULL DEFAULT 'text';
+            ALTER TABLE captures ADD COLUMN image_path TEXT;
+            PRAGMA user_version = 2;
+            ",
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
     Ok(())
 }
 
@@ -92,6 +118,8 @@ fn row_to_capture(row: &rusqlite::Row<'_>) -> Result<Capture, rusqlite::Error> {
         done: done != 0,
         done_at: row.get(6)?,
         created_at: row.get(7)?,
+        kind: row.get(8)?,
+        image_path: row.get(9)?,
     })
 }
 
@@ -99,7 +127,7 @@ pub fn list_captures(conn: &Connection) -> Result<Vec<Capture>, String> {
     let mut stmt = conn
         .prepare(
             "
-            SELECT id, body, source, section, tags_json, done, done_at, created_at
+            SELECT id, body, source, section, tags_json, done, done_at, created_at, kind, image_path
             FROM captures
             ORDER BY created_at DESC
             ",
@@ -120,8 +148,10 @@ pub fn create_capture(conn: &Connection, capture: &NewCapture) -> Result<Capture
     let done_int = i64::from(capture.done);
     conn.execute(
         "
-        INSERT INTO captures (id, body, source, section, tags_json, done, done_at, created_at)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+        INSERT INTO captures (
+          id, body, source, section, tags_json, done, done_at, created_at, kind, image_path
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
         ",
         params![
             capture.id,
@@ -131,7 +161,9 @@ pub fn create_capture(conn: &Connection, capture: &NewCapture) -> Result<Capture
             tags_json,
             done_int,
             capture.done_at,
-            capture.created_at
+            capture.created_at,
+            capture.kind,
+            capture.image_path
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -145,6 +177,8 @@ pub fn create_capture(conn: &Connection, capture: &NewCapture) -> Result<Capture
         done: capture.done,
         done_at: capture.done_at,
         created_at: capture.created_at,
+        kind: capture.kind.clone(),
+        image_path: capture.image_path.clone(),
     })
 }
 
@@ -195,6 +229,21 @@ pub fn set_done(
 }
 
 pub fn purge_done_before(conn: &Connection, cutoff_ms: i64) -> Result<usize, String> {
+    let mut stmt = conn
+        .prepare(
+            "
+            SELECT image_path FROM captures
+            WHERE done = 1 AND done_at IS NOT NULL AND done_at <= ?1
+              AND image_path IS NOT NULL
+            ",
+        )
+        .map_err(|e| e.to_string())?;
+    let paths = stmt
+        .query_map(params![cutoff_ms], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect::<Vec<_>>();
+
     let changed = conn
         .execute(
             "
@@ -204,6 +253,11 @@ pub fn purge_done_before(conn: &Connection, cutoff_ms: i64) -> Result<usize, Str
             params![cutoff_ms],
         )
         .map_err(|e| e.to_string())?;
+
+    for path in paths {
+        let _ = std::fs::remove_file(PathBuf::from(path));
+    }
+
     Ok(changed)
 }
 
@@ -221,4 +275,168 @@ pub fn seed_if_empty(conn: &Connection, seed: &[NewCapture]) -> Result<bool, Str
         create_capture(conn, capture)?;
     }
     Ok(true)
+}
+
+pub fn extension_for_mime(mime: &str) -> &'static str {
+    match mime {
+        "image/jpeg" | "image/jpg" => "jpg",
+        "image/webp" => "webp",
+        "image/gif" => "gif",
+        _ => "png",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn sample(id: &str, body: &str, created_at: i64) -> NewCapture {
+        NewCapture {
+            id: id.to_string(),
+            body: body.to_string(),
+            source: "Test".to_string(),
+            section: "inbox".to_string(),
+            tags: vec!["a".to_string()],
+            created_at,
+            done: false,
+            done_at: None,
+            kind: "text".to_string(),
+            image_path: None,
+        }
+    }
+
+    #[test]
+    fn open_migrates_to_v2_and_supports_crud() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("towdow.sqlite3");
+        let conn = open(&path).unwrap();
+
+        let version: i32 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 2);
+
+        create_capture(&conn, &sample("1", "hello", 100)).unwrap();
+        update_body(&conn, "1", "hello world").unwrap();
+        update_tags(&conn, "1", &["x".to_string(), "y".to_string()]).unwrap();
+        set_done(&conn, "1", true, Some(200)).unwrap();
+
+        let rows = list_captures(&conn).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].body, "hello world");
+        assert_eq!(rows[0].tags, vec!["x".to_string(), "y".to_string()]);
+        assert!(rows[0].done);
+        assert_eq!(rows[0].done_at, Some(200));
+        assert_eq!(rows[0].kind, "text");
+    }
+
+    #[test]
+    fn migrates_v1_rows_to_v2() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("legacy.sqlite3");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "
+                CREATE TABLE captures (
+                  id TEXT PRIMARY KEY NOT NULL,
+                  body TEXT NOT NULL,
+                  source TEXT NOT NULL,
+                  section TEXT NOT NULL,
+                  tags_json TEXT NOT NULL DEFAULT '[]',
+                  done INTEGER NOT NULL DEFAULT 0,
+                  done_at INTEGER,
+                  created_at INTEGER NOT NULL
+                );
+                PRAGMA user_version = 1;
+                ",
+            )
+            .unwrap();
+            conn.execute(
+                "
+                INSERT INTO captures (id, body, source, section, tags_json, done, done_at, created_at)
+                VALUES ('legacy', 'old', 'Vim', 'inbox', '[\"tag\"]', 0, NULL, 42)
+                ",
+                [],
+            )
+            .unwrap();
+        }
+
+        let conn = open(&path).unwrap();
+        let version: i32 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 2);
+
+        let rows = list_captures(&conn).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, "legacy");
+        assert_eq!(rows[0].kind, "text");
+        assert_eq!(rows[0].image_path, None);
+        assert_eq!(rows[0].tags, vec!["tag".to_string()]);
+    }
+
+    #[test]
+    fn purge_removes_rows_and_image_files() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("purge.sqlite3");
+        let image = dir.path().join("shot.png");
+        fs::write(&image, b"png-bytes").unwrap();
+
+        let conn = open(&path).unwrap();
+        create_capture(
+            &conn,
+            &NewCapture {
+                id: "img".into(),
+                body: String::new(),
+                source: "Test".into(),
+                section: "inbox".into(),
+                tags: vec![],
+                created_at: 1,
+                done: true,
+                done_at: Some(10),
+                kind: "image".into(),
+                image_path: Some(image.to_string_lossy().into_owned()),
+            },
+        )
+        .unwrap();
+        create_capture(
+            &conn,
+            &NewCapture {
+                id: "keep".into(),
+                body: "fresh".into(),
+                source: "Test".into(),
+                section: "inbox".into(),
+                tags: vec![],
+                created_at: 2,
+                done: true,
+                done_at: Some(1000),
+                kind: "text".into(),
+                image_path: None,
+            },
+        )
+        .unwrap();
+
+        let removed = purge_done_before(&conn, 50).unwrap();
+        assert_eq!(removed, 1);
+        assert!(!image.exists());
+
+        let rows = list_captures(&conn).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, "keep");
+    }
+
+    #[test]
+    fn seed_if_empty_only_once() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("seed.sqlite3");
+        let conn = open(&path).unwrap();
+        let seed = vec![sample("a", "one", 1), sample("b", "two", 2)];
+        assert!(seed_if_empty(&conn, &seed).unwrap());
+        assert!(!seed_if_empty(&conn, &seed).unwrap());
+        assert_eq!(count_captures(&conn).unwrap(), 2);
+    }
 }

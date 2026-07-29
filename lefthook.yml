@@ -7,6 +7,10 @@ pre-commit:
 
 pre-push:
   jobs:
+    - name: rust-tests
+      run: bun run test:rust
+    - name: bindings
+      run: bun run check:bindings
     - name: typecheck
       run: bun run typecheck
     - name: check

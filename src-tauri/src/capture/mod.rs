@@ -4,13 +4,14 @@ mod double_shift;
 mod macos;
 
 use crate::db::{self, Db, NewCapture};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use specta::Type;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CaptureNotice {
     pub id: String,
@@ -18,7 +19,7 @@ pub struct CaptureNotice {
     pub source: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct PermissionStatus {
     pub accessibility: bool,
@@ -70,6 +71,8 @@ fn run_capture_on_main(app: &AppHandle) {
         created_at: now_ms(),
         done: false,
         done_at: None,
+        kind: "text".to_string(),
+        image_path: None,
     };
 
     let Some(db) = app.try_state::<Db>() else {
@@ -138,12 +141,14 @@ pub fn shortcut_handler(app: &AppHandle, event_state: ShortcutState) {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn capture_now(app: AppHandle) -> Result<(), String> {
     run_capture(&app);
     Ok(())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn capture_permission_status() -> PermissionStatus {
     #[cfg(target_os = "macos")]
     {
@@ -159,6 +164,7 @@ pub fn capture_permission_status() -> PermissionStatus {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn request_capture_permissions() -> PermissionStatus {
     #[cfg(target_os = "macos")]
     {
@@ -172,6 +178,7 @@ pub fn request_capture_permissions() -> PermissionStatus {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn ingest_capture(
     state: State<'_, Db>,
     body: String,
@@ -187,6 +194,8 @@ pub fn ingest_capture(
         created_at: now_ms(),
         done: false,
         done_at: None,
+        kind: "text".to_string(),
+        image_path: None,
     };
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let saved = db::create_capture(&conn, &capture)?;

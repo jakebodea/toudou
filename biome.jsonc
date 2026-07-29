@@ -12,7 +12,8 @@
       "!**/.scratch",
       "!**/zig-out",
       "!**/.native",
-      "!**/public/**/*.svg"
+      "!**/public/**/*.svg",
+      "!**/src/lib/bindings.ts"
     ]
   },
   "linter": {
