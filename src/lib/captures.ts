@@ -1,4 +1,7 @@
-import type { Capture, Section } from "@/lib/types.ts";
+import type { Capture } from "@/lib/types.ts";
+
+const TAG_SPLIT = /[,\s]+/;
+const LEADING_HASH = /^#/;
 
 export function filterCaptures(
   captures: readonly Capture[],
@@ -14,13 +17,12 @@ export function filterCaptures(
   });
 }
 
-export function activeBySection(
+export function activeCaptures(
   captures: readonly Capture[],
-  section: Section,
   query: string
 ): Capture[] {
   return filterCaptures(captures, query)
-    .filter((capture) => !capture.done && capture.section === section)
+    .filter((capture) => !capture.done)
     .sort((a, b) => b.createdAt - a.createdAt);
 }
 
@@ -39,4 +41,18 @@ export function numberedList(bodies: readonly string[]): string {
 
 export function newId(): string {
   return crypto.randomUUID();
+}
+
+export function parseTags(input: string): string[] {
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  for (const part of input.split(TAG_SPLIT)) {
+    const tag = part.trim().toLowerCase().replace(LEADING_HASH, "");
+    if (tag.length === 0 || seen.has(tag)) {
+      continue;
+    }
+    seen.add(tag);
+    tags.push(tag);
+  }
+  return tags;
 }

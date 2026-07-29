@@ -1,6 +1,12 @@
+import { PlusIcon } from "lucide-react";
 import { useState } from "react";
-import { Checkbox } from "@/components/ui/checkbox.tsx";
-import { Input } from "@/components/ui/input.tsx";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@/components/ui/input-group.tsx";
+import { Kbd } from "@/components/ui/kbd.tsx";
 
 interface CaptureComposerProps {
   onSubmit: (body: string) => void;
@@ -8,10 +14,10 @@ interface CaptureComposerProps {
 
 export function CaptureComposer({ onSubmit }: CaptureComposerProps) {
   const [value, setValue] = useState("");
+  const [focused, setFocused] = useState(false);
 
   return (
     <form
-      className="rounded-2xl bg-background px-3.5 py-3 shadow-sm ring-1 ring-black/5"
       onSubmit={(event) => {
         event.preventDefault();
         const next = value.trim();
@@ -22,24 +28,37 @@ export function CaptureComposer({ onSubmit }: CaptureComposerProps) {
         setValue("");
       }}
     >
-      <div className="flex items-center gap-3">
-        <Checkbox
-          aria-hidden
-          checked={false}
-          className="size-5 rounded-full opacity-40"
-          disabled
-          tabIndex={-1}
-        />
-        <Input
+      <InputGroup className="h-11 rounded-2xl bg-background shadow-sm">
+        <InputGroupAddon align="inline-start">
+          <InputGroupButton
+            aria-label="Submit note"
+            size="icon-xs"
+            type="submit"
+            variant="secondary"
+          >
+            <PlusIcon />
+          </InputGroupButton>
+        </InputGroupAddon>
+        <InputGroupInput
           aria-label="Add a note or a prompt"
-          className="h-auto border-0 bg-transparent p-0 text-[15px] shadow-none focus-visible:ring-0"
+          onBlur={() => {
+            setFocused(false);
+          }}
           onChange={(event) => {
             setValue(event.target.value);
+          }}
+          onFocus={() => {
+            setFocused(true);
           }}
           placeholder="Add a note or a prompt"
           value={value}
         />
-      </div>
+        {focused && value.trim().length === 0 ? (
+          <InputGroupAddon align="inline-end">
+            <Kbd className="hidden sm:inline-flex">↵</Kbd>
+          </InputGroupAddon>
+        ) : null}
+      </InputGroup>
     </form>
   );
 }

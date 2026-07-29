@@ -7,6 +7,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager, RunEvent, WindowEvent,
 };
+use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -19,6 +20,7 @@ fn show_main_window(app: &tauri::AppHandle) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -58,6 +60,13 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            match app.notification().permission_state() {
+                Ok(PermissionState::Granted) => {}
+                _ => {
+                    let _ = app.notification().request_permission();
+                }
+            }
+
             capture::start(app.handle());
             Ok(())
         })
@@ -71,6 +80,7 @@ pub fn run() {
             db_commands::list_captures,
             db_commands::create_capture,
             db_commands::update_capture_body,
+            db_commands::update_capture_tags,
             db_commands::set_capture_done,
             db_commands::purge_expired_done,
             db_commands::seed_demo_captures,
@@ -116,6 +126,16 @@ mod db_commands {
     ) -> Result<(), String> {
         let conn = state.0.lock().map_err(|e| e.to_string())?;
         db::update_body(&conn, &id, &body)
+    }
+
+    #[tauri::command]
+    pub fn update_capture_tags(
+        state: tauri::State<'_, Db>,
+        id: String,
+        tags: Vec<String>,
+    ) -> Result<(), String> {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        db::update_tags(&conn, &id, &tags)
     }
 
     #[tauri::command]

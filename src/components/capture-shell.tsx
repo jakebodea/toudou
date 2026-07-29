@@ -1,11 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { MoreHorizontalIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { ClipboardIcon, MoreHorizontalIcon, SearchIcon } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CaptureCard } from "@/components/capture-card.tsx";
 import { CaptureComposer } from "@/components/capture-composer.tsx";
 import { CapturePermissions } from "@/components/capture-permissions.tsx";
-import { CaptureSection } from "@/components/capture-section.tsx";
 import { CaptureToast } from "@/components/capture-toast.tsx";
 import {
   Accordion,
@@ -14,10 +13,19 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion.tsx";
 import { Button } from "@/components/ui/button.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu.tsx";
 import { Input } from "@/components/ui/input.tsx";
+import { Kbd, KbdGroup } from "@/components/ui/kbd.tsx";
 import { ScrollArea } from "@/components/ui/scroll-area.tsx";
 import {
-  activeBySection,
+  activeCaptures,
   doneCaptures,
   newId,
   numberedList,
@@ -31,12 +39,75 @@ import {
   seedDemoCaptures,
   setCaptureDone,
   updateCaptureBody,
+  updateCaptureTags,
 } from "@/lib/storage.ts";
 import type { Capture } from "@/lib/types.ts";
-import { SECTION_LABEL } from "@/lib/types.ts";
 
 const TOAST_MS = 1200;
+const COMPLETE_MS = 280;
+const MOVE_MS = 320;
+const MOVE_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+function measureCaptureCard(id: string): DOMRect | undefined {
+  const el = document.querySelector(`[data-capture-id="${id}"]`);
+  return el?.getBoundingClientRect();
+}
+
+/**
+ * Fly a fixed clone from the card's pre-move rect to its new list slot.
+ * Avoids AccordionContent overflow clipping a mid-FLIP transform.
+ */
+function flyCaptureCard(id: string, first: DOMRect | undefined) {
+  if (!first) {
+    return;
+  }
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    return;
+  }
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-capture-id="${id}"]`);
+      if (!(el instanceof HTMLElement)) {
+        return;
+      }
+      const last = el.getBoundingClientRect();
+      const dx = last.left - first.left;
+      const dy = last.top - first.top;
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) {
+        return;
+      }
+
+      const clone = el.cloneNode(true);
+      if (!(clone instanceof HTMLElement)) {
+        return;
+      }
+      clone.removeAttribute("data-capture-id");
+      clone.style.position = "fixed";
+      clone.style.left = `${first.left}px`;
+      clone.style.top = `${first.top}px`;
+      clone.style.width = `${first.width}px`;
+      clone.style.margin = "0";
+      clone.style.zIndex = "50";
+      clone.style.pointerEvents = "none";
+      document.body.appendChild(clone);
+
+      el.style.opacity = "0";
+      const clear = () => {
+        clone.remove();
+        el.style.opacity = "";
+      };
+      const animation = clone.animate(
+        [
+          { transform: "translate(0px, 0px)" },
+          { transform: `translate(${dx}px, ${dy}px)` },
+        ],
+        { duration: MOVE_MS, easing: MOVE_EASE, fill: "forwards" }
+      );
+      animation.finished.then(clear, clear);
+    });
+  });
+}
 
 export function CaptureShell() {
   const [captures, setCaptures] = useState<Capture[]>([]);
@@ -44,23 +115,20 @@ export function CaptureShell() {
   const [query, setQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState("Captured");
   const [doneOpen, setDoneOpen] = useState(false);
+  const [exitingIds, setExitingIds] = useState<Set<string>>(() => new Set());
+  const [enteringIds, setEnteringIds] = useState<Set<string>>(() => new Set());
+  const toastTimer = useRef<number | null>(null);
 
-  const prompts = useMemo(
-    () => activeBySection(captures, "prompts", query),
-    [captures, query]
-  );
-  const links = useMemo(
-    () => activeBySection(captures, "links", query),
-    [captures, query]
-  );
-  const inbox = useMemo(
-    () => activeBySection(captures, "inbox", query),
+  const active = useMemo(
+    () => activeCaptures(captures, query),
     [captures, query]
   );
   const done = useMemo(() => doneCaptures(captures, query), [captures, query]);
-  const isEmpty =
-    prompts.length + links.length + inbox.length + done.length === 0;
+  const isVacant = captures.length === 0;
+  const noMatches =
+    captures.length > 0 && active.length === 0 && done.length === 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -102,16 +170,29 @@ export function CaptureShell() {
     let cancelled = false;
     const unlisten = listen<{ id: string; body: string; source: string }>(
       "capture://created",
-      () => {
+      (event) => {
         listCaptures()
           .then((rows) => {
-            if (!cancelled) {
-              setCaptures(rows);
-              setToastVisible(true);
-              window.setTimeout(() => {
-                setToastVisible(false);
-              }, TOAST_MS);
+            if (cancelled) {
+              return;
             }
+            setCaptures(rows);
+            setEnteringIds((prev) => new Set(prev).add(event.payload.id));
+            window.setTimeout(() => {
+              setEnteringIds((prev) => {
+                const next = new Set(prev);
+                next.delete(event.payload.id);
+                return next;
+              });
+            }, COMPLETE_MS);
+            setToastVisible(true);
+            if (toastTimer.current !== null) {
+              window.clearTimeout(toastTimer.current);
+            }
+            toastTimer.current = window.setTimeout(() => {
+              setToastVisible(false);
+              toastTimer.current = null;
+            }, TOAST_MS);
           })
           .catch(() => undefined);
       }
@@ -160,11 +241,36 @@ export function CaptureShell() {
     };
   }, [ready]);
 
-  const showToast = () => {
+  useEffect(
+    () => () => {
+      if (toastTimer.current !== null) {
+        window.clearTimeout(toastTimer.current);
+      }
+    },
+    []
+  );
+
+  const showToast = (message = "Captured") => {
+    setToastMessage(message);
     setToastVisible(true);
-    window.setTimeout(() => {
+    if (toastTimer.current !== null) {
+      window.clearTimeout(toastTimer.current);
+    }
+    toastTimer.current = window.setTimeout(() => {
       setToastVisible(false);
+      toastTimer.current = null;
     }, TOAST_MS);
+  };
+
+  const pulseEnter = (id: string) => {
+    setEnteringIds((prev) => new Set(prev).add(id));
+    window.setTimeout(() => {
+      setEnteringIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }, COMPLETE_MS);
   };
 
   const addCapture = (body: string, source = "Towdow") => {
@@ -183,6 +289,7 @@ export function CaptureShell() {
       persistCreate(capture)
         .then((saved) => {
           setCaptures((prev) => [saved, ...prev]);
+          pulseEnter(saved.id);
           showToast();
         })
         .catch(() => undefined);
@@ -190,39 +297,83 @@ export function CaptureShell() {
     }
 
     setCaptures((prev) => [capture, ...prev]);
+    pulseEnter(capture.id);
     showToast();
+  };
+
+  const runCaptureNow = () => {
+    if (isTauriRuntime()) {
+      invoke("capture_now").catch(() => {
+        addCapture(
+          "Simulated global capture — selection or clipboard.",
+          "Safari"
+        );
+      });
+      return;
+    }
+    addCapture("Simulated global capture — selection or clipboard.", "Safari");
+  };
+
+  const applyDone = (
+    id: string,
+    nextDone: boolean,
+    nextDoneAt: number | null
+  ) => {
+    setCaptures((prev) =>
+      prev.map((capture) =>
+        capture.id === id
+          ? { ...capture, done: nextDone, doneAt: nextDoneAt }
+          : capture
+      )
+    );
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setExitingIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   };
 
   const toggleDone = (id: string) => {
     const current = captures.find((capture) => capture.id === id);
-    if (!current) {
+    if (!current || exitingIds.has(id)) {
       return;
     }
     const nextDone = !current.done;
     const nextDoneAt = nextDone ? Date.now() : null;
+    // When DONE is open, slide the card into/out of that section (FLIP).
+    // When closed, keep the collapse-out exit on complete.
+    const shouldFlip = doneOpen;
+    const first = shouldFlip ? measureCaptureCard(id) : undefined;
 
-    const apply = () => {
-      setCaptures((prev) =>
-        prev.map((capture) =>
-          capture.id === id
-            ? { ...capture, done: nextDone, doneAt: nextDoneAt }
-            : capture
-        )
-      );
-      setSelectedIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
+    const persist = () => {
+      const after = () => {
+        applyDone(id, nextDone, nextDoneAt);
+        if (shouldFlip) {
+          flyCaptureCard(id, first);
+        } else if (!nextDone) {
+          pulseEnter(id);
+        }
+      };
+      if (isTauriRuntime()) {
+        setCaptureDone(id, nextDone, nextDoneAt)
+          .then(after)
+          .catch(() => undefined);
+        return;
+      }
+      after();
     };
 
-    if (isTauriRuntime()) {
-      setCaptureDone(id, nextDone, nextDoneAt)
-        .then(apply)
-        .catch(() => undefined);
+    if (nextDone && !shouldFlip) {
+      setExitingIds((prev) => new Set(prev).add(id));
+      window.setTimeout(persist, COMPLETE_MS);
       return;
     }
-    apply();
+    persist();
   };
 
   const toggleSelect = (id: string) => {
@@ -237,7 +388,7 @@ export function CaptureShell() {
     });
   };
 
-  const saveBody = (id: string, body: string) => {
+  const saveCapture = (id: string, body: string, tags: string[]) => {
     const trimmed = body.trim();
     if (trimmed.length === 0) {
       return;
@@ -246,13 +397,13 @@ export function CaptureShell() {
     const apply = () => {
       setCaptures((prev) =>
         prev.map((capture) =>
-          capture.id === id ? { ...capture, body: trimmed } : capture
+          capture.id === id ? { ...capture, body: trimmed, tags } : capture
         )
       );
     };
 
     if (isTauriRuntime()) {
-      updateCaptureBody(id, trimmed)
+      Promise.all([updateCaptureBody(id, trimmed), updateCaptureTags(id, tags)])
         .then(apply)
         .catch(() => undefined);
       return;
@@ -274,128 +425,170 @@ export function CaptureShell() {
 
   if (!ready) {
     return (
-      <div className="flex h-svh items-center justify-center bg-muted/50 text-muted-foreground text-sm">
+      <div className="flex h-svh items-center justify-center bg-muted/45 text-muted-foreground text-sm">
         Loading…
       </div>
     );
   }
 
   return (
-    <div className="relative flex h-svh flex-col bg-muted/50">
-      <CaptureToast visible={toastVisible} />
+    <div className="relative flex h-svh flex-col bg-muted/45">
+      <CaptureToast message={toastMessage} visible={toastVisible} />
 
       <header className="flex items-center gap-2 px-4 pt-4 pb-2">
-        <Input
-          aria-label="Search"
-          className="h-10 rounded-full border-0 bg-background/80 shadow-sm ring-1 ring-black/5"
-          onChange={(event) => {
-            setQuery(event.target.value);
-          }}
-          placeholder="Search"
-          value={query}
-        />
-        <Button
-          aria-label="Capture now"
-          className="size-10 shrink-0 rounded-full"
-          onClick={() => {
-            if (isTauriRuntime()) {
-              invoke("capture_now").catch(() => {
-                addCapture(
-                  "Simulated global capture — selection or clipboard.",
-                  "Safari"
-                );
-              });
-              return;
-            }
-            addCapture(
-              "Simulated global capture — selection or clipboard.",
-              "Safari"
-            );
-          }}
-          size="icon"
-          type="button"
-          variant="secondary"
-        >
-          <MoreHorizontalIcon className="size-4" />
-        </Button>
+        <div className="relative min-w-0 flex-1">
+          <SearchIcon className="pointer-events-none absolute top-1/2 left-3.5 size-3.5 -translate-y-1/2 text-muted-foreground/70" />
+          <Input
+            aria-label="Search"
+            className="h-10 rounded-full border-0 bg-background/90 pr-3 pl-9 shadow-sm ring-1 ring-black/5 transition-[box-shadow] duration-150 focus-visible:shadow-md focus-visible:ring-foreground/10"
+            onChange={(event) => {
+              setQuery(event.target.value);
+            }}
+            placeholder="Search or tag"
+            value={query}
+          />
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              aria-label="Capture menu"
+              className="size-10 shrink-0 rounded-full active:scale-[0.96]"
+              size="icon"
+              title="Capture menu"
+              type="button"
+              variant="secondary"
+            >
+              <MoreHorizontalIcon className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel>Capture</DropdownMenuLabel>
+            <DropdownMenuItem
+              onClick={() => {
+                runCaptureNow();
+              }}
+            >
+              <ClipboardIcon />
+              Capture selection / clipboard
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">
+              <span className="flex items-center gap-1.5">
+                Global
+                <KbdGroup>
+                  <Kbd>⇧</Kbd>
+                  <Kbd>⇧</Kbd>
+                </KbdGroup>
+                or
+                <KbdGroup>
+                  <Kbd>⌘</Kbd>
+                  <Kbd>⇧</Kbd>
+                  <Kbd>Space</Kbd>
+                </KbdGroup>
+              </span>
+            </DropdownMenuLabel>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </header>
 
-      <ScrollArea className="min-h-0 flex-1 px-4">
-        <div className="flex flex-col gap-5 py-3 pb-6">
-          {isEmpty ? (
-            <div className="flex flex-col gap-1.5 px-2 py-10 text-muted-foreground text-sm">
-              <p>Nothing here.</p>
-              <p>Add a note below, or capture from anywhere.</p>
+      <ScrollArea className="min-h-0 flex-1">
+        {/* Padding lives inside the viewport so ring/shadow aren't clipped on LR edges */}
+        <div className="flex flex-col gap-2.5 px-4 py-3 pb-6">
+          {isVacant ? (
+            <div className="flex flex-col items-start gap-2 px-2 py-14 text-muted-foreground">
+              <p className="font-medium text-foreground text-sm">
+                Your capture inbox is empty
+              </p>
+              <p className="max-w-[16rem] text-sm leading-relaxed">
+                Drop something in below, or grab text from any app with{" "}
+                <KbdGroup className="mx-0.5 inline-flex">
+                  <Kbd>⇧</Kbd>
+                  <Kbd>⇧</Kbd>
+                </KbdGroup>
+                .
+              </p>
             </div>
           ) : null}
 
-          <CaptureSection
-            captures={prompts}
-            label={SECTION_LABEL.prompts}
-            onSaveBody={saveBody}
-            onToggleDone={toggleDone}
-            onToggleSelect={toggleSelect}
-            selectedIds={selectedIds}
-          />
-          <CaptureSection
-            captures={links}
-            label={SECTION_LABEL.links}
-            onSaveBody={saveBody}
-            onToggleDone={toggleDone}
-            onToggleSelect={toggleSelect}
-            selectedIds={selectedIds}
-          />
-          <CaptureSection
-            captures={inbox}
-            label={SECTION_LABEL.inbox}
-            onSaveBody={saveBody}
-            onToggleDone={toggleDone}
-            onToggleSelect={toggleSelect}
-            selectedIds={selectedIds}
-          />
+          {noMatches ? (
+            <p className="px-2 py-8 text-muted-foreground text-sm">
+              Nothing matches “{query}”.
+            </p>
+          ) : null}
 
-          <Accordion
-            collapsible
-            onValueChange={(value) => {
-              setDoneOpen(value === "done");
-            }}
-            type="single"
-            value={doneOpen ? "done" : ""}
-          >
-            <AccordionItem className="border-0" value="done">
-              <AccordionTrigger className="px-1 py-2 text-[11px] text-muted-foreground tracking-[0.08em] hover:no-underline">
-                DONE
-              </AccordionTrigger>
-              <AccordionContent className="flex flex-col gap-2.5">
-                {done.length === 0 ? (
-                  <p className="px-1 text-muted-foreground text-sm">
-                    Nothing completed yet.
-                  </p>
-                ) : (
-                  done.map((capture) => (
-                    <CaptureCard
-                      capture={capture}
-                      key={capture.id}
-                      onSaveBody={saveBody}
-                      onToggleDone={toggleDone}
-                      onToggleSelect={toggleSelect}
-                      selected={selectedIds.has(capture.id)}
-                    />
-                  ))
-                )}
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
+          {active.map((capture) => (
+            <CaptureCard
+              capture={capture}
+              entering={enteringIds.has(capture.id)}
+              exiting={exitingIds.has(capture.id)}
+              key={capture.id}
+              onCopied={() => {
+                showToast("Copied");
+              }}
+              onSave={saveCapture}
+              onToggleDone={toggleDone}
+              onToggleSelect={toggleSelect}
+              selected={selectedIds.has(capture.id)}
+            />
+          ))}
+
+          {(done.length > 0 || doneOpen) && (
+            <Accordion
+              collapsible
+              onValueChange={(value) => {
+                setDoneOpen(value === "done");
+              }}
+              type="single"
+              value={doneOpen ? "done" : ""}
+            >
+              <AccordionItem className="mt-2 border-0" value="done">
+                <AccordionTrigger className="px-1 py-2 text-[11px] text-muted-foreground tracking-[0.1em] hover:no-underline">
+                  DONE
+                  {done.length > 0 ? (
+                    <span className="ml-1.5 font-normal tracking-normal opacity-70">
+                      {done.length}
+                    </span>
+                  ) : null}
+                </AccordionTrigger>
+                <AccordionContent className="flex flex-col gap-2.5 px-0.5 pt-1.5">
+                  {done.length === 0 ? (
+                    <p className="px-1 text-muted-foreground text-sm">
+                      Nothing completed yet.
+                    </p>
+                  ) : (
+                    done.map((capture) => (
+                      <CaptureCard
+                        capture={capture}
+                        key={capture.id}
+                        onCopied={() => {
+                          showToast("Copied");
+                        }}
+                        onSave={saveCapture}
+                        onToggleDone={toggleDone}
+                        onToggleSelect={toggleSelect}
+                        selected={selectedIds.has(capture.id)}
+                      />
+                    ))
+                  )}
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          )}
         </div>
       </ScrollArea>
 
       <footer className="flex flex-col gap-2 pt-1 pb-4">
         <CapturePermissions />
         {selectedIds.size > 0 ? (
-          <div className="mx-4 flex items-center justify-between rounded-2xl bg-foreground px-3.5 py-2.5 text-background text-sm">
-            <span>{selectedIds.size} selected</span>
+          <div className="fade-in slide-in-from-bottom-1 mx-4 flex animate-in items-center justify-between rounded-2xl bg-foreground px-3.5 py-2.5 text-background text-sm duration-150">
+            <span className="flex items-center gap-2">
+              {selectedIds.size} selected
+              <span className="hidden text-background/60 text-xs sm:inline">
+                ⌘-click to toggle
+              </span>
+            </span>
             <Button
-              className="h-8 rounded-full bg-background text-foreground hover:bg-background/90"
+              className="h-8 rounded-full bg-background text-foreground hover:bg-background/90 active:scale-[0.97]"
               onClick={() => {
                 copySelected().catch(() => undefined);
               }}

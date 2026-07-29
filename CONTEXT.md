@@ -17,8 +17,8 @@ A Capture row opened in place by click; body, tags, and actions are editable the
 _Avoid_: Detail page, modal editor
 
 **Tag**:
-A user-defined badge used to group and filter Captures. A Capture may have many Tags.
-_Avoid_: Folder, project, label (prefer Tag)
+A user-defined badge used to group and filter Captures. A Capture may have many Tags. The main list is flat — Tags are optional filing, not sections/folders.
+_Avoid_: Folder, project, label, section (as a filing hierarchy)
 
 **Source**:
 An auto-assigned Tag naming the frontmost app at capture time when detectable (e.g. Cursor, Helium).

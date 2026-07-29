@@ -161,6 +161,20 @@ pub fn update_body(conn: &Connection, id: &str, body: &str) -> Result<(), String
     Ok(())
 }
 
+pub fn update_tags(conn: &Connection, id: &str, tags: &[String]) -> Result<(), String> {
+    let tags_json = serde_json::to_string(tags).map_err(|e| e.to_string())?;
+    let changed = conn
+        .execute(
+            "UPDATE captures SET tags_json = ?1 WHERE id = ?2",
+            params![tags_json, id],
+        )
+        .map_err(|e| e.to_string())?;
+    if changed == 0 {
+        return Err(format!("capture not found: {id}"));
+    }
+    Ok(())
+}
+
 pub fn set_done(
     conn: &Connection,
     id: &str,

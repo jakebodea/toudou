@@ -19,7 +19,7 @@ function fromStored(row: StoredCapture): Capture {
     done: row.done,
     doneAt: row.doneAt,
     id: row.id,
-    section: row.section as Capture["section"],
+    section: "inbox",
     source: row.source,
     tags: row.tags,
   };
@@ -42,7 +42,7 @@ export async function createCapture(capture: Capture): Promise<Capture> {
       done: capture.done,
       doneAt: capture.doneAt,
       id: capture.id,
-      section: capture.section,
+      section: "inbox",
       source: capture.source,
       tags: capture.tags,
     },
@@ -55,6 +55,13 @@ export async function updateCaptureBody(
   body: string
 ): Promise<void> {
   await invoke("update_capture_body", { body, id });
+}
+
+export async function updateCaptureTags(
+  id: string,
+  tags: string[]
+): Promise<void> {
+  await invoke("update_capture_tags", { id, tags });
 }
 
 export async function setCaptureDone(
@@ -77,7 +84,7 @@ export function seedDemoCaptures(seed: Capture[]): Promise<boolean> {
       done: capture.done,
       doneAt: capture.doneAt,
       id: capture.id,
-      section: capture.section,
+      section: "inbox",
       source: capture.source,
       tags: capture.tags,
     })),

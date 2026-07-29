@@ -7,6 +7,7 @@ use crate::db::{self, Db, NewCapture};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+use tauri_plugin_notification::NotificationExt;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize)]
@@ -98,6 +99,17 @@ fn run_capture_on_main(app: &AppHandle) {
     if let Err(err) = app.emit("capture://created", &notice) {
         eprintln!("capture emit failed: {err}");
     }
+
+    // System notification so feedback works while the main window is hidden.
+    if let Err(err) = app
+        .notification()
+        .builder()
+        .title("Towdow")
+        .body("Captured")
+        .show()
+    {
+        eprintln!("capture notification failed: {err}");
+    }
 }
 
 fn read_capture_payload() -> Option<CapturePayload> {
@@ -184,5 +196,11 @@ pub fn ingest_capture(
         source: saved.source,
     };
     let _ = app.emit("capture://created", &notice);
+    let _ = app
+        .notification()
+        .builder()
+        .title("Towdow")
+        .body("Captured")
+        .show();
     Ok(notice)
 }
