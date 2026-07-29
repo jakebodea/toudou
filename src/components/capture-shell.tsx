@@ -8,10 +8,14 @@ import {
 import { useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CaptureCard } from "@/components/capture-card.tsx";
-import { CaptureComposer } from "@/components/capture-composer.tsx";
+import {
+  CaptureComposer,
+  type CaptureComposerHandle,
+} from "@/components/capture-composer.tsx";
 import { CaptureInboxList } from "@/components/capture-inbox-list.tsx";
 import { CapturePermissions } from "@/components/capture-permissions.tsx";
 import { CaptureSettings } from "@/components/capture-settings.tsx";
+import { CaptureShortcutsDialog } from "@/components/capture-shortcuts-dialog.tsx";
 import { CaptureToast } from "@/components/capture-toast.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import {
@@ -29,6 +33,7 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.tsx";
 import { Input } from "@/components/ui/input.tsx";
@@ -42,8 +47,17 @@ import {
   doneCaptures,
   inProgressCaptures,
   newId,
+  normalizeTags,
   numberedList,
+  stripTrailingDashes,
 } from "@/lib/captures.ts";
+import { dispatchInboxShortcut } from "@/lib/dispatch-inbox-shortcut.ts";
+import {
+  copyCaptureContent,
+  isTypingTarget,
+  navigableCaptures,
+  resolveInboxShortcut,
+} from "@/lib/inbox-keyboard.ts";
 import {
   clearAllAnimationMs,
   LIST_EXIT_TRANSITION,
@@ -65,6 +79,7 @@ import {
   isTauriRuntime,
   listCaptures,
   createCapture as persistCreate,
+  deleteCapture as persistDelete,
   purgeExpiredDone,
   seedDemoCaptures,
   setCaptureStatus,
@@ -76,6 +91,7 @@ import {
   type CaptureStatus,
   captureStatus,
   type InboxSort,
+  nextStatus,
   statusFields,
 } from "@/lib/types.ts";
 
@@ -104,10 +120,19 @@ export function CaptureShell() {
     readCopySetsInProgress()
   );
   const [checkingIds, setCheckingIds] = useState<Set<string>>(() => new Set());
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [editRequest, setEditRequest] = useState<{
+    id: string;
+    key: number;
+  } | null>(null);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const editRequestKeyRef = useRef(0);
   const [footerPad, setFooterPad] = useState(96);
   const [footerEl, setFooterEl] = useState<HTMLElement | null>(null);
   const toastTimer = useRef<number | null>(null);
   const clearAllTimer = useRef<number | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<CaptureComposerHandle>(null);
   const layoutEnabled = !reduceMotion;
   const sharedLayout = Boolean(
     layoutEnabled && (doneOpen || inProgressEnabled)
@@ -124,6 +149,10 @@ export function CaptureShell() {
   );
   const done = useMemo(() => doneCaptures(captures, query), [captures, query]);
   const knownTags = useMemo(() => collectUsedTags(captures), [captures]);
+  const navList = useMemo(
+    () => navigableCaptures(active, inProgress, done, doneOpen),
+    [active, done, doneOpen, inProgress]
+  );
   const isVacant = captures.length === 0;
   const noMatches =
     captures.length > 0 &&
@@ -261,6 +290,26 @@ export function CaptureShell() {
     };
   }, [footerEl]);
 
+  useEffect(() => {
+    if (focusedId === null) {
+      return;
+    }
+    if (navList.some((capture) => capture.id === focusedId)) {
+      return;
+    }
+    setFocusedId(navList[0]?.id ?? null);
+  }, [focusedId, navList]);
+
+  useEffect(() => {
+    if (!focusedId) {
+      return;
+    }
+    const el = document.querySelector<HTMLElement>(
+      `[data-capture-id="${focusedId}"]`
+    );
+    el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [focusedId]);
+
   const showToast = (message = "Captured") => {
     setToastMessage(message);
     setToastVisible(true);
@@ -275,7 +324,7 @@ export function CaptureShell() {
 
   const addCapture = (body: string, source = "towdow", tags: string[] = []) => {
     const capture: Capture = {
-      body,
+      body: stripTrailingDashes(body.trimEnd()).trim(),
       createdAt: Date.now(),
       done: false,
       doneAt: null,
@@ -285,24 +334,24 @@ export function CaptureShell() {
       kind: "text",
       section: "inbox",
       source,
-      tags,
+      tags: normalizeTags(tags),
     };
 
     if (isTauriRuntime()) {
       persistCreate(capture)
         .then((saved) => {
           setCaptures((prev) => [saved, ...prev]);
-          showToast();
         })
         .catch(() => undefined);
       return;
     }
 
     setCaptures((prev) => [capture, ...prev]);
-    showToast();
   };
 
   const addImageCapture = (file: File, body = "", tags: string[] = []) => {
+    const nextBody = stripTrailingDashes(body.trimEnd()).trim();
+    const nextTags = normalizeTags(tags);
     if (isTauriRuntime()) {
       fileToBase64(file)
         .then((bytesBase64) =>
@@ -310,19 +359,18 @@ export function CaptureShell() {
             bytesBase64,
             file.type || "image/png",
             "towdow",
-            body
+            nextBody
           )
         )
         .then(async (saved) => {
-          if (tags.length === 0) {
+          if (nextTags.length === 0) {
             return saved;
           }
-          await updateCaptureTags(saved.id, tags);
-          return { ...saved, tags };
+          await updateCaptureTags(saved.id, nextTags);
+          return { ...saved, tags: nextTags };
         })
         .then((saved) => {
           setCaptures((prev) => [saved, ...prev]);
-          showToast("Captured");
         })
         .catch(() => undefined);
       return;
@@ -335,7 +383,7 @@ export function CaptureShell() {
         return;
       }
       const capture: Capture = {
-        body,
+        body: nextBody,
         createdAt: Date.now(),
         done: false,
         doneAt: null,
@@ -345,10 +393,9 @@ export function CaptureShell() {
         kind: "image",
         section: "inbox",
         source: "towdow",
-        tags,
+        tags: nextTags,
       };
       setCaptures((prev) => [capture, ...prev]);
-      showToast("Captured");
     };
     reader.readAsDataURL(file);
   };
@@ -434,6 +481,35 @@ export function CaptureShell() {
     setStatus(id, "in_progress");
   };
 
+  const deleteCapture = (id: string) => {
+    if (!captures.some((capture) => capture.id === id)) {
+      return;
+    }
+
+    const apply = () => {
+      setCaptures((prev) => prev.filter((capture) => capture.id !== id));
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setCheckingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      showToast("Deleted");
+    };
+
+    if (isTauriRuntime()) {
+      persistDelete(id)
+        .then(apply)
+        .catch(() => undefined);
+      return;
+    }
+    apply();
+  };
+
   const clearAll = () => {
     if (clearingAll || captures.length === 0) {
       return;
@@ -489,7 +565,8 @@ export function CaptureShell() {
     if (!current) {
       return;
     }
-    const trimmed = body.trim();
+    const trimmed = stripTrailingDashes(body.trimEnd()).trim();
+    const nextTags = normalizeTags(tags);
     if (trimmed.length === 0 && current.kind !== "image") {
       return;
     }
@@ -497,13 +574,18 @@ export function CaptureShell() {
     const apply = () => {
       setCaptures((prev) =>
         prev.map((capture) =>
-          capture.id === id ? { ...capture, body: trimmed, tags } : capture
+          capture.id === id
+            ? { ...capture, body: trimmed, tags: nextTags }
+            : capture
         )
       );
     };
 
     if (isTauriRuntime()) {
-      Promise.all([updateCaptureBody(id, trimmed), updateCaptureTags(id, tags)])
+      Promise.all([
+        updateCaptureBody(id, trimmed),
+        updateCaptureTags(id, nextTags),
+      ])
         .then(apply)
         .catch(() => undefined);
       return;
@@ -526,10 +608,142 @@ export function CaptureShell() {
     setSelectedIds(new Set());
   };
 
+  const runPrimaryAction = (id: string) => {
+    const capture = captures.find((item) => item.id === id);
+    if (!capture) {
+      return;
+    }
+    copyCaptureContent(capture)
+      .then(() => {
+        handleCopied(id);
+      })
+      .catch(() => undefined);
+  };
+
+  const moveFocus = (delta: number) => {
+    if (navList.length === 0) {
+      return;
+    }
+    const currentIndex = focusedId
+      ? navList.findIndex((capture) => capture.id === focusedId)
+      : -1;
+    let nextIndex: number;
+    if (currentIndex < 0) {
+      nextIndex = delta > 0 ? 0 : navList.length - 1;
+    } else {
+      nextIndex = Math.max(
+        0,
+        Math.min(navList.length - 1, currentIndex + delta)
+      );
+    }
+    const next = navList[nextIndex];
+    if (next) {
+      setFocusedId(next.id);
+    }
+  };
+
   const setSort = (sort: InboxSort) => {
     setInboxSort(sort);
     writeInboxSort(sort);
   };
+
+  const focusNeighbor = (id: string) => {
+    const index = navList.findIndex((capture) => capture.id === id);
+    return navList[index + 1]?.id ?? navList[index - 1]?.id ?? null;
+  };
+
+  const keyHandlerRef = useRef<(event: KeyboardEvent) => void>(() => undefined);
+  keyHandlerRef.current = (event: KeyboardEvent) => {
+    const focused = focusedId
+      ? captures.find((capture) => capture.id === focusedId)
+      : undefined;
+    const action = resolveInboxShortcut({
+      event,
+      focusedDone: Boolean(focused?.done),
+      hasFocus: focusedId !== null,
+      hasSelection: selectedIds.size > 0,
+      modalOpen: clearAllOpen || settingsOpen || shortcutsOpen || clearingAll,
+      typing: isTypingTarget(event.target),
+    });
+    if (!action) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    dispatchInboxShortcut(action, event.target, {
+      advanceStatus: () => {
+        if (!(focusedId && focused)) {
+          return;
+        }
+        const status = nextStatus(captureStatus(focused), inProgressEnabled);
+        if (status === "done" && !doneOpen) {
+          setFocusedId(focusNeighbor(focusedId));
+        }
+        setStatus(focusedId, status);
+      },
+      blurTarget: (target) => {
+        if (target instanceof HTMLElement) {
+          target.blur();
+        }
+      },
+      clearFocus: () => {
+        setFocusedId(null);
+      },
+      clearSelection: () => {
+        setSelectedIds(new Set());
+      },
+      deleteFocused: () => {
+        if (!focusedId) {
+          return;
+        }
+        const fallback = focusNeighbor(focusedId);
+        deleteCapture(focusedId);
+        setFocusedId(fallback);
+      },
+      editFocused: () => {
+        if (!focusedId) {
+          return;
+        }
+        editRequestKeyRef.current += 1;
+        setEditRequest({ id: focusedId, key: editRequestKeyRef.current });
+      },
+      focusComposer: () => {
+        composerRef.current?.focus();
+      },
+      focusSearch: () => {
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      },
+      moveFocus,
+      openShortcuts: () => {
+        setShortcutsOpen(true);
+      },
+      runPrimary: () => {
+        if (focusedId) {
+          runPrimaryAction(focusedId);
+        }
+      },
+      toggleDone: () => {
+        setDoneOpen((open) => !open);
+      },
+      toggleSelect: () => {
+        if (focusedId) {
+          toggleSelect(focusedId);
+        }
+      },
+    });
+  };
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      keyHandlerRef.current(event);
+    };
+    // Capture phase so list shortcuts win over card body Enter/Space handlers.
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, []);
 
   if (!ready) {
     return (
@@ -544,11 +758,15 @@ export function CaptureShell() {
     <CaptureCard
       capture={capture}
       checking={checkingIds.has(capture.id)}
+      editRequest={editRequest}
+      focused={focusedId === capture.id}
       inProgressEnabled={inProgressEnabled}
       onCopied={() => {
         handleCopied(capture.id);
       }}
+      onDelete={deleteCapture}
       onFilterTag={filterByTag}
+      onFocusCapture={setFocusedId}
       onSave={saveCapture}
       onSetStatus={setStatus}
       onToggleSelect={toggleSelect}
@@ -560,6 +778,10 @@ export function CaptureShell() {
     <div className="relative flex h-svh flex-col overflow-hidden overscroll-none bg-muted/45">
       <div aria-hidden className="h-[28px] shrink-0" data-tauri-drag-region />
       <CaptureToast message={toastMessage} visible={toastVisible} />
+      <CaptureShortcutsDialog
+        onOpenChange={setShortcutsOpen}
+        open={shortcutsOpen}
+      />
 
       <header className="flex shrink-0 items-center gap-2 overscroll-none px-4 pt-2 pb-2">
         <div className="relative min-w-0 flex-1">
@@ -571,6 +793,7 @@ export function CaptureShell() {
               setQuery(event.target.value);
             }}
             placeholder="Search or tag"
+            ref={searchRef}
             value={query}
           />
         </div>
@@ -625,6 +848,15 @@ export function CaptureShell() {
               Clear all
             </DropdownMenuItem>
             <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => {
+                setShortcutsOpen(true);
+              }}
+            >
+              Keyboard shortcuts
+              <DropdownMenuShortcut>?</DropdownMenuShortcut>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">
               <span className="flex items-center gap-1.5">
                 Global
@@ -642,6 +874,10 @@ export function CaptureShell() {
             </DropdownMenuLabel>
           </DropdownMenuContent>
         </DropdownMenu>
+        <CaptureShortcutsDialog
+          onOpenChange={setShortcutsOpen}
+          open={shortcutsOpen}
+        />
         <Dialog
           onOpenChange={(open) => {
             if (clearingAll) {
@@ -714,7 +950,7 @@ export function CaptureShell() {
             <span className="flex items-center gap-2">
               {selectedIds.size} selected
               <span className="hidden text-background/60 text-xs sm:inline">
-                ⌘-click to toggle
+                ⌘-click or x to toggle
               </span>
             </span>
             <Button
@@ -735,6 +971,7 @@ export function CaptureShell() {
             onSubmit={({ body, image, tags }) => {
               submitComposer(body, image, tags);
             }}
+            ref={composerRef}
           />
         </div>
       </footer>

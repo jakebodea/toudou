@@ -2,6 +2,34 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
+@import "./typeset.css";
+
+.typeset-capture {
+  --typeset-size: 15px;
+  --typeset-leading: 1.375;
+  --typeset-flow: 0.55em;
+}
+
+.typeset-capture > :first-child {
+  margin-block-start: 0;
+}
+
+.capture-editor .ProseMirror {
+  min-height: 1.375em;
+  outline: none;
+}
+
+.capture-editor .ProseMirror > :first-child {
+  margin-block-start: 0;
+}
+
+.capture-editor .ProseMirror p.is-editor-empty:first-child::before {
+  float: left;
+  height: 0;
+  color: color-mix(in oklab, var(--color-muted-foreground) 65%, transparent);
+  pointer-events: none;
+  content: attr(data-placeholder);
+}
 
 @custom-variant dark (&:is(.dark *));
 

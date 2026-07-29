@@ -51,3 +51,25 @@ export function statusFields(status: CaptureStatus): {
     }
   }
 }
+
+/** Checkbox / Space: cycle inbox → in progress → done (or inbox ↔ done). */
+export function nextStatus(
+  status: CaptureStatus,
+  inProgressEnabled: boolean
+): CaptureStatus {
+  if (!inProgressEnabled) {
+    return status === "done" ? "active" : "done";
+  }
+  switch (status) {
+    case "active":
+      return "in_progress";
+    case "in_progress":
+      return "done";
+    case "done":
+      return "in_progress";
+    default: {
+      const _exhaustive: never = status;
+      throw new Error(`Unhandled capture status: ${_exhaustive}`);
+    }
+  }
+}

@@ -5,6 +5,7 @@ const LEADING_HASH = /^#/;
 const HASH_TAG_TOKEN = /(^|\s)#([^\s#]+)/g;
 const ACTIVE_HASH_QUERY = /(?:^|\s)#([^\s#]*)$/;
 const MULTI_SPACE = /\s+/g;
+const TRAILING_DASHES = /-+$/;
 
 export function filterCaptures(
   captures: readonly Capture[],
@@ -101,18 +102,33 @@ export function newId(): string {
   return crypto.randomUUID();
 }
 
-export function parseTags(input: string): string[] {
+/** Drop trailing `-` (empty list markers, tag space→dash leftovers). */
+export function stripTrailingDashes(value: string): string {
+  return value.replace(TRAILING_DASHES, "");
+}
+
+export function normalizeTag(raw: string): string {
+  return stripTrailingDashes(
+    raw.trim().toLowerCase().replace(LEADING_HASH, "").replace(MULTI_SPACE, "-")
+  );
+}
+
+export function normalizeTags(tags: readonly string[]): string[] {
   const seen = new Set<string>();
-  const tags: string[] = [];
-  for (const part of input.split(TAG_SPLIT)) {
-    const tag = part.trim().toLowerCase().replace(LEADING_HASH, "");
+  const next: string[] = [];
+  for (const raw of tags) {
+    const tag = normalizeTag(raw);
     if (tag.length === 0 || seen.has(tag)) {
       continue;
     }
     seen.add(tag);
-    tags.push(tag);
+    next.push(tag);
   }
-  return tags;
+  return next;
+}
+
+export function parseTags(input: string): string[] {
+  return normalizeTags(input.split(TAG_SPLIT));
 }
 
 /** Distinct tags across captures, most-used first then alphabetical. */
@@ -138,20 +154,22 @@ export function extractComposerTags(input: string): ComposerTagParse {
   const seen = new Set<string>();
   const tags: string[] = [];
   HASH_TAG_TOKEN.lastIndex = 0;
-  const body = input
-    .replace(HASH_TAG_TOKEN, (match, lead: string, raw: string) => {
-      const tag = raw.trim().toLowerCase().replace(LEADING_HASH, "");
-      if (tag.length === 0) {
-        return match;
-      }
-      if (!seen.has(tag)) {
-        seen.add(tag);
-        tags.push(tag);
-      }
-      return lead;
-    })
-    .replace(MULTI_SPACE, " ")
-    .trim();
+  const body = stripTrailingDashes(
+    input
+      .replace(HASH_TAG_TOKEN, (match, lead: string, raw: string) => {
+        const tag = normalizeTag(raw);
+        if (tag.length === 0) {
+          return match;
+        }
+        if (!seen.has(tag)) {
+          seen.add(tag);
+          tags.push(tag);
+        }
+        return lead;
+      })
+      .replace(MULTI_SPACE, " ")
+      .trimEnd()
+  ).trim();
   return { body, tags };
 }
 

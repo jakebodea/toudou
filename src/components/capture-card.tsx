@@ -1,22 +1,28 @@
-import { PencilIcon, XIcon } from "lucide-react";
+import { XIcon } from "lucide-react";
 import { type RefObject, useEffect, useRef, useState } from "react";
+import {
+  CaptureEditor,
+  type CaretPoint,
+} from "@/components/capture-editor.tsx";
+import { CaptureMarkdown } from "@/components/capture-markdown.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
-import { Button } from "@/components/ui/button.tsx";
 import { Checkbox } from "@/components/ui/checkbox.tsx";
 import {
   ContextMenu,
   ContextMenuContent,
+  ContextMenuItem,
   ContextMenuRadioGroup,
   ContextMenuRadioItem,
+  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu.tsx";
-import { Textarea } from "@/components/ui/textarea.tsx";
 import { parseTags } from "@/lib/captures.ts";
 import { captureImageSrc } from "@/lib/storage.ts";
 import {
   type Capture,
   type CaptureStatus,
   captureStatus,
+  nextStatus,
 } from "@/lib/types.ts";
 import { cn } from "@/lib/utils.ts";
 
@@ -24,9 +30,15 @@ interface CaptureCardProps {
   capture: Capture;
   /** Checked UI before the card moves to Done. */
   checking?: boolean;
+  /** Keyboard asks this card to enter edit mode when id matches and key advances. */
+  editRequest?: { id: string; key: number } | null;
+  /** Keyboard list focus (distinct from multi-select). */
+  focused?: boolean;
   inProgressEnabled?: boolean;
   onCopied?: () => void;
+  onDelete: (id: string) => void;
   onFilterTag: (tag: string) => void;
+  onFocusCapture: (id: string) => void;
   onSave: (id: string, body: string, tags: string[]) => void;
   onSetStatus: (id: string, status: CaptureStatus) => void;
   onToggleSelect: (id: string) => void;
@@ -35,22 +47,26 @@ interface CaptureCardProps {
 
 interface CaptureBodyProps {
   capture: Capture;
+  caretPoint: CaretPoint | null;
   draft: string;
   editing: boolean;
+  /** List keyboard focus owns Enter/Space; body only handles them when tabbed to. */
+  listFocused: boolean;
   onCancelEdit: () => void;
   onCommitEdit: () => void;
   onCopyImage: () => void;
   onCopyText: () => void;
   onDraftChange: (value: string) => void;
-  onStartEdit: () => void;
+  onStartEdit: (point?: CaretPoint) => void;
   onToggleSelect: () => void;
-  textareaRef: RefObject<HTMLTextAreaElement | null>;
 }
 
 function CaptureBody({
   capture,
+  caretPoint,
   draft,
   editing,
+  listFocused,
   onCancelEdit,
   onCommitEdit,
   onCopyImage,
@@ -58,7 +74,6 @@ function CaptureBody({
   onDraftChange,
   onStartEdit,
   onToggleSelect,
-  textareaRef,
 }: CaptureBodyProps) {
   const imageSrc = captureImageSrc(capture);
   const hasImage = capture.kind === "image";
@@ -73,6 +88,12 @@ function CaptureBody({
               onToggleSelect();
               return;
             }
+            if (!capture.done) {
+              onStartEdit();
+            }
+          }}
+          onContextMenu={(event) => {
+            event.preventDefault();
             onCopyImage();
           }}
           type="button"
@@ -93,64 +114,55 @@ function CaptureBody({
       ) : null}
 
       {editing && !capture.done ? (
-        <Textarea
-          aria-label="Edit capture"
-          className={cn(
-            "min-h-0 resize-none rounded-none border-0 bg-transparent p-0 text-[15px] leading-snug shadow-none",
-            "focus-visible:border-transparent focus-visible:ring-0",
-            "md:text-[15px]",
-            capture.done &&
-              "text-muted-foreground line-through decoration-foreground/15"
-          )}
-          onBlur={onCommitEdit}
-          onChange={(event) => {
-            onDraftChange(event.target.value);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault();
-              onCancelEdit();
-              return;
-            }
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              event.currentTarget.blur();
-            }
-          }}
-          ref={textareaRef}
-          spellCheck
-          value={draft}
+        <CaptureEditor
+          caretPoint={caretPoint}
+          initialMarkdown={draft}
+          onCancel={onCancelEdit}
+          onChange={onDraftChange}
+          onCommit={onCommitEdit}
         />
       ) : null}
 
       {!editing && (capture.body.length > 0 || !hasImage) ? (
-        <button
-          className="text-left"
+        // Markdown may include links/inputs; a <button> wrapper would nest interactives.
+        // biome-ignore lint/a11y/useSemanticElements: div hosts rendered markdown safely
+        <div
+          className="cursor-text text-left"
           onClick={(event) => {
             if (event.metaKey || event.ctrlKey) {
               onToggleSelect();
               return;
             }
-            onCopyText();
+            if (!capture.done) {
+              onStartEdit({ x: event.clientX, y: event.clientY });
+            }
           }}
           onContextMenu={(event) => {
             event.preventDefault();
+            onCopyText();
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" && event.key !== " ") {
+              return;
+            }
+            // List shortcuts handle these when the card has keyboard focus.
+            if (listFocused && !event.metaKey && !event.ctrlKey) {
+              return;
+            }
+            event.preventDefault();
+            if (event.metaKey || event.ctrlKey) {
+              onToggleSelect();
+              return;
+            }
             if (!capture.done) {
               onStartEdit();
             }
           }}
-          type="button"
+          role="button"
+          tabIndex={0}
         >
-          <p
-            className={cn(
-              "whitespace-pre-wrap text-[15px] leading-snug",
-              capture.done &&
-                "text-muted-foreground line-through decoration-foreground/15"
-            )}
-          >
-            {capture.body}
-          </p>
-        </button>
+          <CaptureMarkdown done={capture.done}>{capture.body}</CaptureMarkdown>
+        </div>
       ) : null}
     </div>
   );
@@ -311,27 +323,6 @@ function TagAddControl({
   );
 }
 
-function nextStatus(
-  status: CaptureStatus,
-  inProgressEnabled: boolean
-): CaptureStatus {
-  if (!inProgressEnabled) {
-    return status === "done" ? "active" : "done";
-  }
-  switch (status) {
-    case "active":
-      return "in_progress";
-    case "in_progress":
-      return "done";
-    case "done":
-      return "in_progress";
-    default: {
-      const _exhaustive: never = status;
-      throw new Error(`Unhandled capture status: ${_exhaustive}`);
-    }
-  }
-}
-
 function checkboxAriaLabel(
   status: CaptureStatus,
   inProgressEnabled: boolean
@@ -356,42 +347,38 @@ function checkboxAriaLabel(
 export function CaptureCard({
   capture,
   checking = false,
+  editRequest = null,
+  focused = false,
   inProgressEnabled = false,
   selected,
   onCopied,
+  onDelete,
   onFilterTag,
+  onFocusCapture,
   onSetStatus,
   onToggleSelect,
   onSave,
 }: CaptureCardProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(capture.body);
+  const [caretPoint, setCaretPoint] = useState<CaretPoint | null>(null);
   const [addingTag, setAddingTag] = useState(false);
   const [tagDraft, setTagDraft] = useState("");
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const draftRef = useRef(capture.body);
   const tagInputRef = useRef<HTMLInputElement>(null);
   const skipBodyBlur = useRef(false);
   const skipTagBlur = useRef(false);
+  const lastEditRequestKey = useRef(0);
   const status = captureStatus(capture);
   const isInProgress = status === "in_progress";
   const isDone = status === "done" || checking;
 
   useEffect(() => {
     if (!editing) {
+      draftRef.current = capture.body;
       setDraft(capture.body);
     }
   }, [capture.body, editing]);
-
-  useEffect(() => {
-    if (editing) {
-      textareaRef.current?.focus();
-      const el = textareaRef.current;
-      if (el) {
-        const len = el.value.length;
-        el.setSelectionRange(len, len);
-      }
-    }
-  }, [editing]);
 
   useEffect(() => {
     if (addingTag) {
@@ -400,28 +387,50 @@ export function CaptureCard({
   }, [addingTag]);
 
   useEffect(() => {
+    if (!editRequest || editRequest.id !== capture.id || capture.done) {
+      return;
+    }
+    if (editRequest.key === lastEditRequestKey.current) {
+      return;
+    }
+    lastEditRequestKey.current = editRequest.key;
+    skipBodyBlur.current = false;
+    draftRef.current = capture.body;
+    setDraft(capture.body);
+    setCaretPoint(null);
+    setEditing(true);
+  }, [capture.body, capture.done, capture.id, editRequest]);
+
+  useEffect(() => {
     if (!capture.done) {
       return;
     }
     skipBodyBlur.current = true;
+    draftRef.current = capture.body;
     setDraft(capture.body);
+    setCaretPoint(null);
     setEditing(false);
     skipTagBlur.current = true;
     setTagDraft("");
     setAddingTag(false);
   }, [capture.done, capture.body]);
 
-  const startEdit = () => {
+  const startEdit = (point?: CaretPoint) => {
     if (capture.done) {
       return;
     }
+    skipBodyBlur.current = false;
+    draftRef.current = capture.body;
     setDraft(capture.body);
+    setCaretPoint(point ?? null);
     setEditing(true);
   };
 
   const cancelEdit = () => {
     skipBodyBlur.current = true;
+    draftRef.current = capture.body;
     setDraft(capture.body);
+    setCaretPoint(null);
     setEditing(false);
   };
 
@@ -430,16 +439,26 @@ export function CaptureCard({
       skipBodyBlur.current = false;
       return;
     }
-    const next = draft.trim();
+    const next = draftRef.current.trim();
     if (next.length === 0 && capture.kind !== "image") {
+      skipBodyBlur.current = true;
+      draftRef.current = capture.body;
       setDraft(capture.body);
+      setCaretPoint(null);
       setEditing(false);
       return;
     }
     if (next !== capture.body) {
       onSave(capture.id, next, capture.tags);
     }
+    skipBodyBlur.current = true;
+    setCaretPoint(null);
     setEditing(false);
+  };
+
+  const handleDraftChange = (value: string) => {
+    draftRef.current = value;
+    setDraft(value);
   };
 
   const copyImage = () => {
@@ -527,60 +546,75 @@ export function CaptureCard({
   return (
     <div
       className={cn(
-        "rounded-2xl bg-background shadow-sm ring-1",
+        "rounded-2xl bg-background shadow-sm ring-1 transition-[box-shadow,ring] duration-150",
         selected ? "ring-foreground/25" : "ring-black/5",
+        focused && "ring-2 ring-foreground/35",
         capture.done && "opacity-65",
         isInProgress && inProgressEnabled && "shadow-md ring-foreground/12"
       )}
       data-capture-id={capture.id}
+      data-focused={focused ? "true" : undefined}
+      onPointerDown={() => {
+        onFocusCapture(capture.id);
+      }}
     >
       <div className="flex items-start gap-3 px-3.5 py-3">
-        {inProgressEnabled ? (
-          <ContextMenu>
-            <ContextMenuTrigger asChild>
-              <span className="inline-flex">{checkbox}</span>
-            </ContextMenuTrigger>
-            <ContextMenuContent className="w-44">
-              <ContextMenuRadioGroup
-                onValueChange={(value) => {
-                  if (
-                    value === "active" ||
-                    value === "in_progress" ||
-                    value === "done"
-                  ) {
-                    onSetStatus(capture.id, value);
-                  }
-                }}
-                value={status}
-              >
-                <ContextMenuRadioItem value="active">
-                  Inbox
-                </ContextMenuRadioItem>
-                <ContextMenuRadioItem value="in_progress">
-                  In Progress
-                </ContextMenuRadioItem>
-                <ContextMenuRadioItem value="done">Done</ContextMenuRadioItem>
-              </ContextMenuRadioGroup>
-            </ContextMenuContent>
-          </ContextMenu>
-        ) : (
-          checkbox
-        )}
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            <span className="inline-flex">{checkbox}</span>
+          </ContextMenuTrigger>
+          <ContextMenuContent className="w-44">
+            {inProgressEnabled ? (
+              <>
+                <ContextMenuRadioGroup
+                  onValueChange={(value) => {
+                    if (
+                      value === "active" ||
+                      value === "in_progress" ||
+                      value === "done"
+                    ) {
+                      onSetStatus(capture.id, value);
+                    }
+                  }}
+                  value={status}
+                >
+                  <ContextMenuRadioItem value="active">
+                    Inbox
+                  </ContextMenuRadioItem>
+                  <ContextMenuRadioItem value="in_progress">
+                    In Progress
+                  </ContextMenuRadioItem>
+                  <ContextMenuRadioItem value="done">Done</ContextMenuRadioItem>
+                </ContextMenuRadioGroup>
+                <ContextMenuSeparator />
+              </>
+            ) : null}
+            <ContextMenuItem
+              onSelect={() => {
+                onDelete(capture.id);
+              }}
+              variant="destructive"
+            >
+              Delete
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           <CaptureBody
             capture={capture}
+            caretPoint={caretPoint}
             draft={draft}
             editing={editing}
+            listFocused={focused}
             onCancelEdit={cancelEdit}
             onCommitEdit={commitEdit}
             onCopyImage={copyImage}
             onCopyText={copyText}
-            onDraftChange={setDraft}
+            onDraftChange={handleDraftChange}
             onStartEdit={startEdit}
             onToggleSelect={() => {
               onToggleSelect(capture.id);
             }}
-            textareaRef={textareaRef}
           />
           <CaptureTags
             addingTag={addingTag}
@@ -597,18 +631,6 @@ export function CaptureCard({
             tags={capture.tags}
           />
         </div>
-        {editing || capture.done ? null : (
-          <Button
-            aria-label="Edit capture"
-            className="mt-0.5 shrink-0 text-muted-foreground"
-            onClick={startEdit}
-            size="icon-xs"
-            type="button"
-            variant="ghost"
-          >
-            <PencilIcon />
-          </Button>
-        )}
       </div>
     </div>
   );

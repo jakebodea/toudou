@@ -71,6 +71,14 @@ async purgeExpiredDone(cutoffMs: number) : Promise<Result<number, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async deleteCapture(id: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_capture", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async clearAllCaptures() : Promise<Result<number, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("clear_all_captures") };

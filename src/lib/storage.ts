@@ -125,6 +125,10 @@ export async function purgeExpiredDone(cutoffMs: number): Promise<number> {
   return unwrap(await commands.purgeExpiredDone(cutoffMs));
 }
 
+export async function deleteCapture(id: string): Promise<void> {
+  unwrap(await commands.deleteCapture(id));
+}
+
 export async function clearAllCaptures(): Promise<number> {
   return unwrap(await commands.clearAllCaptures());
 }

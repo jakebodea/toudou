@@ -1,5 +1,12 @@
 import { XIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  type Ref,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import {
@@ -23,9 +30,10 @@ import {
   activeHashQuery,
   extractComposerTags,
   filterTagSuggestions,
+  normalizeTag,
+  normalizeTags,
 } from "@/lib/captures.ts";
 
-const LEADING_HASH = /^#/;
 const LONE_HASH = /(^|\s)#(?=\s|$)/g;
 const MULTI_SPACE = /\s+/g;
 
@@ -35,9 +43,14 @@ export interface CaptureComposerSubmit {
   tags: string[];
 }
 
+export interface CaptureComposerHandle {
+  focus: () => void;
+}
+
 interface CaptureComposerProps {
   knownTags?: readonly string[];
   onSubmit: (payload: CaptureComposerSubmit) => void;
+  ref?: Ref<CaptureComposerHandle>;
 }
 
 function imageFileFromClipboard(data: DataTransfer | null): File | null {
@@ -55,14 +68,6 @@ function imageFileFromClipboard(data: DataTransfer | null): File | null {
     }
   }
   return null;
-}
-
-function normalizeTag(raw: string): string {
-  return raw
-    .trim()
-    .toLowerCase()
-    .replace(LEADING_HASH, "")
-    .replace(MULTI_SPACE, "-");
 }
 
 function insertAtCaret(
@@ -83,6 +88,7 @@ function stripLoneHash(value: string): string {
 export function CaptureComposer({
   knownTags = [],
   onSubmit,
+  ref,
 }: CaptureComposerProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -92,6 +98,12 @@ export function CaptureComposer({
   const [pendingImage, setPendingImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [highlight, setHighlight] = useState(0);
+
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      inputRef.current?.focus();
+    },
+  }));
 
   const hashQuery = useMemo(
     () => activeHashQuery(value, caret),
@@ -208,7 +220,7 @@ export function CaptureComposer({
 
   const submit = () => {
     const parsed = extractComposerTags(stripLoneHash(value));
-    const tags = [...new Set([...pendingTags, ...parsed.tags])];
+    const tags = normalizeTags([...pendingTags, ...parsed.tags]);
     if (parsed.body.length === 0 && !pendingImage) {
       return;
     }

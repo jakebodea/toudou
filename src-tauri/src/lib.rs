@@ -28,6 +28,7 @@ fn specta_builder() -> Builder {
         db_commands::set_capture_done,
         db_commands::set_capture_status,
         db_commands::purge_expired_done,
+        db_commands::delete_capture,
         db_commands::clear_all_captures,
         db_commands::seed_demo_captures,
         capture::capture_now,
@@ -265,6 +266,13 @@ mod db_commands {
     ) -> Result<usize, String> {
         let conn = state.0.lock().map_err(|e| e.to_string())?;
         db::purge_done_before(&conn, cutoff_ms)
+    }
+
+    #[tauri::command]
+    #[specta::specta]
+    pub fn delete_capture(state: tauri::State<'_, Db>, id: String) -> Result<(), String> {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        db::delete_capture(&conn, &id)
     }
 
     #[tauri::command]

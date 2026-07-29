@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::path::{Path, PathBuf};
@@ -320,6 +320,31 @@ pub fn purge_done_before(conn: &Connection, cutoff_ms: i64) -> Result<usize, Str
     Ok(changed)
 }
 
+pub fn delete_capture(conn: &Connection, id: &str) -> Result<(), String> {
+    let image_path: Option<String> = conn
+        .query_row(
+            "SELECT image_path FROM captures WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?
+        .flatten();
+
+    let changed = conn
+        .execute("DELETE FROM captures WHERE id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
+    if changed == 0 {
+        return Err(format!("capture not found: {id}"));
+    }
+
+    if let Some(path) = image_path {
+        let _ = std::fs::remove_file(PathBuf::from(path));
+    }
+
+    Ok(())
+}
+
 pub fn clear_all_captures(conn: &Connection) -> Result<usize, String> {
     let mut stmt = conn
         .prepare(
@@ -584,5 +609,39 @@ mod tests {
         assert!(!image.exists());
         assert_eq!(count_captures(&conn).unwrap(), 0);
         assert!(list_captures(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn delete_capture_removes_row_and_image_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("delete.sqlite3");
+        let image = dir.path().join("shot.png");
+        fs::write(&image, b"png-bytes").unwrap();
+
+        let conn = open(&path).unwrap();
+        create_capture(&conn, &sample("keep", "stay", 1)).unwrap();
+        create_capture(
+            &conn,
+            &NewCapture {
+                id: "gone".into(),
+                body: String::new(),
+                source: "Test".into(),
+                section: "inbox".into(),
+                tags: vec![],
+                created_at: 2,
+                done: false,
+                done_at: None,
+                kind: "image".into(),
+                image_path: Some(image.to_string_lossy().into_owned()),
+                in_progress: false,
+            },
+        )
+        .unwrap();
+
+        delete_capture(&conn, "gone").unwrap();
+        assert!(!image.exists());
+        assert_eq!(count_captures(&conn).unwrap(), 1);
+        assert_eq!(list_captures(&conn).unwrap()[0].id, "keep");
+        assert!(delete_capture(&conn, "missing").is_err());
     }
 }
