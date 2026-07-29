@@ -5,14 +5,14 @@ Status: resolved
 
 ## Question
 
-Stand up the persistence boundary from [Native SDK storage, tray, and local I/O](./02-native-sdk-storage-shell.md): SQLite at `app_dirs.data/towdow.sqlite3`, `attachments/` beside it, migrations, and narrow ops (load inbox, create/update Capture, tags, mark Done, purge by `done_at_ms`) exposed to the TypeScript `update` loop as ordinary `Msg`s — either Zig native module/ejected runner or the same companion process — without emulating a DB via whole-file `Cmd.writeFile`.
+Stand up the persistence boundary from [Native SDK storage, tray, and local I/O](./02-native-sdk-storage-shell.md): SQLite at `app_dirs.data/toudou.sqlite3`, `attachments/` beside it, migrations, and narrow ops (load inbox, create/update Capture, tags, mark Done, purge by `done_at_ms`) exposed to the TypeScript `update` loop as ordinary `Msg`s — either Zig native module/ejected runner or the same companion process — without emulating a DB via whole-file `Cmd.writeFile`.
 
 ## Answer
 
 Delivered a working companion-process spike. The ejected `build.zig` builds
-and installs `towdow-storage`, a Zig executable linked to the platform
+and installs `toudou-storage`, a Zig executable linked to the platform
 SQLite library. It resolves the same `app_dirs.data` path as the SDK, creates
-`towdow.sqlite3` and adjacent `attachments/`, enables foreign keys/WAL, and
+`toudou.sqlite3` and adjacent `attachments/`, enables foreign keys/WAL, and
 applies migration v1 through `PRAGMA user_version`.
 
 Migration v1 defines Captures, Tags, capture/tag relationships, attachment
@@ -36,11 +36,11 @@ native check
 native build
 
 # Run against an isolated HOME:
-HOME="$TEST_HOME" zig-out/bin/towdow-storage init
-HOME="$TEST_HOME" zig-out/bin/towdow-storage create "first capture" 1000
-HOME="$TEST_HOME" zig-out/bin/towdow-storage list
-HOME="$TEST_HOME" zig-out/bin/towdow-storage mark-done 1 2000
-HOME="$TEST_HOME" zig-out/bin/towdow-storage purge 2000
+HOME="$TEST_HOME" zig-out/bin/toudou-storage init
+HOME="$TEST_HOME" zig-out/bin/toudou-storage create "first capture" 1000
+HOME="$TEST_HOME" zig-out/bin/toudou-storage list
+HOME="$TEST_HOME" zig-out/bin/toudou-storage mark-done 1 2000
+HOME="$TEST_HOME" zig-out/bin/toudou-storage purge 2000
 ```
 
 The isolated run created the expected database/attachments paths, reported
@@ -50,7 +50,7 @@ purge cutoff, and removed it at the cutoff.
 Remaining gaps before this is the production persistence layer:
 
 - Package the companion inside the app bundle and resolve its executable
-  path; the TypeScript spike currently invokes `zig-out/bin/towdow-storage`.
+  path; the TypeScript spike currently invokes `zig-out/bin/toudou-storage`.
 - Decode companion JSON into typed Capture model records rather than retaining
   opaque result bytes.
 - Add update-Capture, Tag replacement/listing, and attachment

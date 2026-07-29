@@ -360,7 +360,7 @@ export function CaptureShell() {
     }, TOAST_MS);
   };
 
-  const addCapture = (body: string, source = "towdow", tags: string[] = []) => {
+  const addCapture = (body: string, source = "toudou", tags: string[] = []) => {
     const capture: Capture = {
       body: stripTrailingDashes(body.trimEnd()).trim(),
       createdAt: Date.now(),
@@ -396,7 +396,7 @@ export function CaptureShell() {
           createImageCapture(
             bytesBase64,
             file.type || "image/png",
-            "towdow",
+            "toudou",
             nextBody
           )
         )
@@ -430,7 +430,7 @@ export function CaptureShell() {
         inProgress: false,
         kind: "image",
         section: "inbox",
-        source: "towdow",
+        source: "toudou",
         tags: nextTags,
       };
       setCaptures((prev) => [capture, ...prev]);
@@ -443,7 +443,7 @@ export function CaptureShell() {
       addImageCapture(image, body, tags);
       return;
     }
-    addCapture(body, "towdow", tags);
+    addCapture(body, "toudou", tags);
   };
 
   const runCaptureNow = () => {

@@ -417,7 +417,7 @@ mod tests {
     #[test]
     fn open_migrates_to_v3_and_supports_crud() {
         let dir = tempdir().unwrap();
-        let path = dir.path().join("towdow.sqlite3");
+        let path = dir.path().join("toudou.sqlite3");
         let conn = open(&path).unwrap();
 
         let version: i32 = conn

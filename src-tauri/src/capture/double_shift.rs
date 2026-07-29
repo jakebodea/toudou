@@ -98,7 +98,7 @@ pub fn start(app: AppHandle) {
     }
 
     std::thread::Builder::new()
-        .name("towdow-double-shift".into())
+        .name("toudou-double-shift".into())
         .spawn(|| {
             if let Err(err) = run_tap() {
                 eprintln!("double-Shift tap failed: {err}");

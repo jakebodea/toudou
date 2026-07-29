@@ -83,7 +83,7 @@ export async function createCapture(capture: Capture): Promise<Capture> {
 export async function createImageCapture(
   bytesBase64: string,
   mime: string,
-  source = "towdow",
+  source = "toudou",
   body = ""
 ): Promise<Capture> {
   const row = unwrap(

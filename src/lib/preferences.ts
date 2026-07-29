@@ -1,9 +1,9 @@
 import type { InboxSort, Theme } from "@/lib/types.ts";
 
-const INBOX_SORT_KEY = "towdow.inboxSort";
-const IN_PROGRESS_ENABLED_KEY = "towdow.inProgressEnabled";
-const COPY_SETS_IN_PROGRESS_KEY = "towdow.copySetsInProgress";
-const THEME_KEY = "towdow.theme";
+const INBOX_SORT_KEY = "toudou.inboxSort";
+const IN_PROGRESS_ENABLED_KEY = "toudou.inProgressEnabled";
+const COPY_SETS_IN_PROGRESS_KEY = "toudou.copySetsInProgress";
+const THEME_KEY = "toudou.theme";
 
 function readBoolean(key: string, fallback: boolean): boolean {
   try {

@@ -81,7 +81,7 @@ export function CaptureInboxList({
   const doneBase = active.length + inProgress.length;
 
   return (
-    <LayoutGroup id="towdow-captures">
+    <LayoutGroup id="toudou-captures">
       <div
         className={
           clearingAll

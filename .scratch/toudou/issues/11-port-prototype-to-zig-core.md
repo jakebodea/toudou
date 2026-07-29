@@ -5,7 +5,7 @@ Status: resolved
 
 ## Question
 
-After [Airy list + Composer + expand + capture toast](./05-airy-list-shell-prototype.md) lands a density pick, port the chosen shell onto the Zig app core from [Tray status item on TypeScript scaffold](./10-tray-status-item.md) (`src/main.zig` + tray), since Native SDK 0.6.3 requires Zig for `status_item` and Towdow is staying tray-first.
+After [Airy list + Composer + expand + capture toast](./05-airy-list-shell-prototype.md) lands a density pick, port the chosen shell onto the Zig app core from [Tray status item on TypeScript scaffold](./10-tray-status-item.md) (`src/main.zig` + tray), since Native SDK 0.6.3 requires Zig for `status_item` and Toudou is staying tray-first.
 
 ## Answer
 

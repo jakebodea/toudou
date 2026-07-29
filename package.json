@@ -40,7 +40,7 @@
     "ultracite": "7.9.4",
     "vite": "^7.0.4"
   },
-  "name": "towdow",
+  "name": "toudou",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

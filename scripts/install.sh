@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Install the latest towdow macOS build from GitHub Releases.
+# Install the latest toudou macOS build from GitHub Releases.
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/jakebodea/towdow/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/jakebodea/toudou/main/scripts/install.sh | bash
 set -euo pipefail
 
-REPO="jakebodea/towdow"
-APP_NAME="towdow"
-INSTALL_DIR="${TOWDOW_INSTALL_DIR:-/Applications}"
+REPO="jakebodea/toudou"
+APP_NAME="toudou"
+INSTALL_DIR="${TOUDOU_INSTALL_DIR:-/Applications}"
 TMP_DIR="$(mktemp -d)"
 
 cleanup() {
@@ -27,7 +27,7 @@ need curl
 need tar
 need uname
 
-[[ "$(uname -s)" == "Darwin" ]] || die "towdow install script currently supports macOS only"
+[[ "$(uname -s)" == "Darwin" ]] || die "toudou install script currently supports macOS only"
 
 ARCH="$(uname -m)"
 case "$ARCH" in

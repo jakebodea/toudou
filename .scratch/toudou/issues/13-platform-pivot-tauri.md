@@ -5,7 +5,7 @@ Status: resolved
 
 ## Question
 
-Given discomfort with Native SDK house styling and preference for React/CSS/web animations, should Towdow leave Native SDK for Tauri or Electron?
+Given discomfort with Native SDK house styling and preference for React/CSS/web animations, should Toudou leave Native SDK for Tauri or Electron?
 
 ## Answer
 

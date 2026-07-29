@@ -10,7 +10,7 @@ Scaffold a Native SDK TypeScript app at the repo root (or agreed subdir) via `na
 ## Answer
 
 Scaffolded the Native SDK 0.6.3 TypeScript app at the repository root with
-the `towdow` identity and Towdow display name. The generated counter remains
+the `toudou` identity and Toudou display name. The generated counter remains
 as a deliberately small build/runtime smoke test; Captures, Tags, Source, and
 hotkeys are reserved for follow-up tickets.
 

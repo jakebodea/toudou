@@ -91,18 +91,18 @@ pub fn run() {
         .setup(|app| {
             let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
             std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
-            let db_path = data_dir.join("towdow.sqlite3");
+            let db_path = data_dir.join("toudou.sqlite3");
             let conn = db::open(&db_path)?;
             app.manage(Db(std::sync::Mutex::new(conn)));
 
-            let show = MenuItem::with_id(app, "show", "Show towdow", true, None::<&str>)?;
+            let show = MenuItem::with_id(app, "show", "Show toudou", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
 
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
-                .tooltip("towdow")
+                .tooltip("toudou")
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => show_main_window(app),
                     "quit" => app.exit(0),

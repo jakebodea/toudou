@@ -44,12 +44,12 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: towdow ${{ github.ref_name }}
+          releaseName: toudou ${{ github.ref_name }}
           releaseBody: |
             ## Install (macOS)
 
             ```sh
-            curl -fsSL https://raw.githubusercontent.com/jakebodea/towdow/main/scripts/install.sh | bash
+            curl -fsSL https://raw.githubusercontent.com/jakebodea/toudou/main/scripts/install.sh | bash
             ```
 
             Or download the `.dmg` below, drag into Applications, then right-click → Open the first time (Gatekeeper).

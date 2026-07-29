@@ -1,6 +1,6 @@
-# towdow
+# toudou
 
-Personal desktop capture inbox (“toe doe”). macOS-first.
+Personal desktop capture inbox (“too-doo”). macOS-first.
 
 **Stack:** Tauri 2 · React · Vite · TypeScript · shadcn/ui · Ultracite (Biome)
 
@@ -9,15 +9,15 @@ Personal desktop capture inbox (“toe doe”). macOS-first.
 macOS, one liner (repo must be **public** so GitHub Releases are downloadable):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/jakebodea/towdow/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jakebodea/toudou/main/scripts/install.sh | bash
 ```
 
-Installs to `/Applications/towdow.app`. First launch: right-click → Open (unsigned / Gatekeeper).
+Installs to `/Applications/toudou.app`. First launch: right-click → Open (unsigned / Gatekeeper).
 
 Override install location:
 
 ```sh
-TOWDOW_INSTALL_DIR="$HOME/Applications" bash scripts/install.sh
+TOUDOU_INSTALL_DIR="$HOME/Applications" bash scripts/install.sh
 ```
 
 ## Develop
@@ -63,10 +63,10 @@ bun run tauri build
 open src-tauri/target/release/bundle/dmg
 ```
 
-That produces `towdow.app` + a `.dmg`. Drag the app wherever you want (Applications is optional). Unsigned builds will show a Gatekeeper warning — right-click → Open the first time, or clear quarantine:
+That produces `toudou.app` + a `.dmg`. Drag the app wherever you want (Applications is optional). Unsigned builds will show a Gatekeeper warning — right-click → Open the first time, or clear quarantine:
 
 ```sh
-xattr -cr /path/to/towdow.app
+xattr -cr /path/to/toudou.app
 ```
 
 ### GitHub Release
@@ -83,19 +83,19 @@ git push origin v0.1.0
 
 Secrets already used by CI:
 
-- `TAURI_SIGNING_PRIVATE_KEY` — from `~/.tauri/towdow.key` (do not commit)
+- `TAURI_SIGNING_PRIVATE_KEY` — from `~/.tauri/toudou.key` (do not commit)
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — empty if the key has no password
 
-Public key lives in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`). Losing the private key breaks OTA for existing installs — keep a backup of `~/.tauri/towdow.key`.
+Public key lives in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`). Losing the private key breaks OTA for existing installs — keep a backup of `~/.tauri/toudou.key`.
 
 **Private repo note:** friends cannot hit `/releases/latest/...` or the install script until the repo is public (or you host artifacts elsewhere). Flip with:
 
 ```sh
-gh repo edit jakebodea/towdow --visibility public
+gh repo edit jakebodea/toudou --visibility public
 ```
 
 Apple Developer ID signing/notarization (no Gatekeeper nag) is optional and separate from updater signing.
 
 ## Wayfinder
 
-Planning lives in `.scratch/towdow/map.md`.
+Planning lives in `.scratch/toudou/map.md`.

@@ -108,7 +108,7 @@ fn run_capture_on_main(app: &AppHandle) {
     if let Err(err) = app
         .notification()
         .builder()
-        .title("towdow")
+        .title("toudou")
         .body("Captured")
         .show()
     {
@@ -210,7 +210,7 @@ pub fn ingest_capture(
     let _ = app
         .notification()
         .builder()
-        .title("towdow")
+        .title("toudou")
         .body("Captured")
         .show();
     Ok(notice)
