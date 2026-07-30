@@ -56,6 +56,6 @@
     "check:bindings": "bun run bindings && git diff --exit-code -- src/lib/bindings.ts"
   },
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true
 }

@@ -1,0 +1,118 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="background" x1="220" y1="82" x2="818" y2="942" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#353F32"/>
+      <stop offset="0.48" stop-color="#293326"/>
+      <stop offset="1" stop-color="#1B231A"/>
+    </linearGradient>
+    <radialGradient id="background-light" cx="0" cy="0" r="1" gradientTransform="translate(315 182) rotate(49) scale(672 622)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8A8E7A" stop-opacity="0.12"/>
+      <stop offset="0.6" stop-color="#234734" stop-opacity="0"/>
+      <stop offset="1" stop-color="#041C11" stop-opacity="0.2"/>
+    </radialGradient>
+    <linearGradient id="paper" x1="336" y1="198" x2="702" y2="594" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFBEE"/>
+      <stop offset="0.58" stop-color="#FDF1DB"/>
+      <stop offset="1" stop-color="#F0E0C3"/>
+    </linearGradient>
+    <linearGradient id="fold" x1="673" y1="210" x2="744" y2="318" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF8E9"/>
+      <stop offset="0.55" stop-color="#F0E0C2"/>
+      <stop offset="1" stop-color="#D8C29A"/>
+    </linearGradient>
+    <linearGradient id="pocket-interior" x1="512" y1="374" x2="512" y2="486" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#183725"/>
+      <stop offset="1" stop-color="#3B5740"/>
+    </linearGradient>
+    <linearGradient id="pocket" x1="278" y1="440" x2="713" y2="818" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F6ECD6"/>
+      <stop offset="0.46" stop-color="#E9DCC1"/>
+      <stop offset="1" stop-color="#DAC8A8"/>
+    </linearGradient>
+    <radialGradient id="pocket-light" cx="0" cy="0" r="1" gradientTransform="translate(375 490) rotate(44) scale(503 375)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.25"/>
+      <stop offset="0.55" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset="1" stop-color="#A78F65" stop-opacity="0.1"/>
+    </radialGradient>
+    <filter id="icon-shadow" x="16" y="0" width="1020" height="1024" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+    <filter id="paper-shadow" x="258" y="171" width="571" height="478" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="15" stdDeviation="17" flood-color="#06160D" flood-opacity="0.42"/>
+    </filter>
+    <filter id="fold-shadow" x="630" y="179" width="188" height="184" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="-2" dy="12" stdDeviation="9" flood-color="#645236" flood-opacity="0.42"/>
+    </filter>
+    <filter id="pocket-shadow" x="159" y="376" width="706" height="535" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="16" stdDeviation="17" flood-color="#0B0D0A" flood-opacity="0.52"/>
+    </filter>
+    <filter id="background-grain" x="-15%" y="-15%" width="130%" height="130%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.48" numOctaves="3" seed="13" result="noise"/>
+      <feColorMatrix in="noise" type="saturate" values="0" result="mono"/>
+      <feComponentTransfer in="mono" result="faint-noise">
+        <feFuncA type="table" tableValues="0 0.07"/>
+      </feComponentTransfer>
+      <feComposite in="faint-noise" in2="SourceGraphic" operator="in"/>
+    </filter>
+    <filter id="paper-grain" x="-15%" y="-15%" width="130%" height="130%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.62" numOctaves="4" seed="29" result="noise"/>
+      <feColorMatrix in="noise" type="matrix" values="0.35 0 0 0 0.35  0 0.28 0 0 0.24  0 0 0.18 0 0.12  0 0 0 0.12 0" result="warm-noise"/>
+      <feComposite in="warm-noise" in2="SourceGraphic" operator="in"/>
+    </filter>
+    <clipPath id="background-clip">
+      <path d="M300 51H754C904 51 989 137 989 287V742C989 893 904 979 752 979H301C149 979 65 893 65 742V288C65 137 149 51 300 51Z"/>
+    </clipPath>
+    <clipPath id="paper-clip">
+      <path d="M338 199H659L787 326V603H300V237C300 216 317 199 338 199Z"/>
+    </clipPath>
+    <clipPath id="pocket-clip">
+      <path d="M216 420C291 461 384 506 476 534C499 541 525 541 548 534C640 506 734 461 808 420V688C808 775 739 842 652 842H372C285 842 216 775 216 688V420Z"/>
+    </clipPath>
+  </defs>
+
+  <path d="M300 51H754C904 51 989 137 989 287V742C989 893 904 979 752 979H301C149 979 65 893 65 742V288C65 137 149 51 300 51Z" fill="#020806" fill-opacity="0.72" filter="url(#icon-shadow)" transform="translate(0 13)"/>
+  <g>
+    <path d="M300 51H754C904 51 989 137 989 287V742C989 893 904 979 752 979H301C149 979 65 893 65 742V288C65 137 149 51 300 51Z" fill="url(#background)"/>
+    <path d="M300 51H754C904 51 989 137 989 287V742C989 893 904 979 752 979H301C149 979 65 893 65 742V288C65 137 149 51 300 51Z" fill="url(#background-light)"/>
+    <path d="M300 53H754C902 53 987 138 987 287V742C987 891 902 977 752 977H301C151 977 67 891 67 742V288C67 138 151 53 300 53Z" stroke="#93A397" stroke-opacity="0.24" stroke-width="3"/>
+    <g clip-path="url(#background-clip)" opacity="0.85">
+      <path d="M300 51H754C904 51 989 137 989 287V742C989 893 904 979 752 979H301C149 979 65 893 65 742V288C65 137 149 51 300 51Z" fill="#8FA093" filter="url(#background-grain)"/>
+    </g>
+  </g>
+
+  <g transform="translate(20 0)">
+  <g filter="url(#pocket-shadow)">
+    <path d="M216 424C216 385 262 376 307 376C369 376 431 405 512 405C593 405 655 376 717 376C762 376 808 385 808 424V478H216V424Z" fill="url(#pocket-interior)"/>
+    <path d="M216 424C216 385 262 376 307 376C369 376 431 405 512 405C593 405 655 376 717 376C762 376 808 385 808 424" stroke="#C4CDAE" stroke-linecap="round" stroke-width="7"/>
+    <path d="M219 423C219 389 263 382 307 382C369 382 431 410 512 410C593 410 655 382 717 382C761 382 805 389 805 423" stroke="#FFF4DC" stroke-linecap="round" stroke-opacity="0.58" stroke-width="2"/>
+  </g>
+
+  <g transform="translate(-32 0)">
+  <g transform="translate(41.3 0) scale(0.924 1)">
+  <g filter="url(#paper-shadow)">
+    <path d="M338 199H659L787 326V603H300V237C300 216 317 199 338 199Z" fill="url(#paper)"/>
+    <path d="M338 201H658L785 327V601H302V237C302 217 318 201 338 201Z" stroke="#FFFDF2" stroke-opacity="0.82" stroke-width="4"/>
+    <g clip-path="url(#paper-clip)" opacity="0.75">
+      <path d="M338 199H659L787 326V603H300V237C300 216 317 199 338 199Z" fill="#CBB58A" filter="url(#paper-grain)"/>
+    </g>
+  </g>
+
+  <g filter="url(#fold-shadow)">
+    <path d="M659 199L787 326H704C679 326 659 306 659 281V199Z" fill="url(#fold)"/>
+    <path d="M661 204L782 324H704C680 324 661 305 661 281V204Z" stroke="#BFA77C" stroke-opacity="0.62" stroke-width="4"/>
+  </g>
+  </g>
+  </g>
+
+  <g filter="url(#pocket-shadow)">
+    <path d="M216 420C291 461 384 506 476 534C499 541 525 541 548 534C640 506 734 461 808 420V688C808 775 739 842 652 842H372C285 842 216 775 216 688V420Z" fill="url(#pocket)"/>
+    <path d="M216 420C291 461 384 506 476 534C499 541 525 541 548 534C640 506 734 461 808 420V688C808 775 739 842 652 842H372C285 842 216 775 216 688V420Z" fill="url(#pocket-light)"/>
+    <path d="M219 425C294 465 385 508 477 536C500 543 524 543 547 536C639 508 731 465 805 425V688C805 773 737 839 652 839H372C287 839 219 773 219 688V425Z" stroke="#C7B690" stroke-opacity="0.62" stroke-width="6"/>
+    <g clip-path="url(#pocket-clip)" opacity="0.82">
+      <path d="M216 420C291 461 384 506 476 534C499 541 525 541 548 534C640 506 734 461 808 420V688C808 775 739 842 652 842H372C285 842 216 775 216 688V420Z" fill="#C2A774" filter="url(#paper-grain)"/>
+    </g>
+    <path d="M216 420C291 461 384 506 476 534C499 541 525 541 548 534C640 506 734 461 808 420" stroke="#FFF4DE" stroke-width="9" stroke-linecap="round"/>
+    <path d="M219 429C294 468 386 510 478 538C500 545 524 545 546 538C638 510 730 468 805 429" stroke="#BBAA86" stroke-opacity="0.32" stroke-width="3" stroke-linecap="round"/>
+  </g>
+  </g>
+</svg>
