@@ -69,6 +69,18 @@ That produces `toudou.app` + a `.dmg`. Drag the app wherever you want (Applicati
 xattr -cr /path/to/toudou.app
 ```
 
+To replace the installed local app in one step, use:
+
+```sh
+bun run rebuild:app
+```
+
+It quits toudou, builds a release bundle, replaces `/Applications/toudou.app`,
+signs it with the local `toudou Development` Keychain identity, and opens the
+new app. Your Captures remain in Application Support. The stable signature lets
+macOS keep Accessibility and Input Monitoring grants across rebuilds. It builds
+only the local `.app` bundle, so it does not require the updater signing key.
+
 ### GitHub Release
 
 1. Bump `version` in `package.json` and `src-tauri/tauri.conf.json` (keep them in sync).
@@ -81,10 +93,21 @@ git push origin v0.1.0
 
 3. The [Release](.github/workflows/release.yml) workflow builds macOS arm64 + x64, signs updater artifacts, uploads `latest.json`, and publishes the GitHub Release.
 
-Secrets already used by CI:
+Secrets required by CI:
 
 - `TAURI_SIGNING_PRIVATE_KEY` — from `~/.tauri/toudou.key` (do not commit)
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — empty if the key has no password
+- `APPLE_CERTIFICATE` — base64-encoded `.p12` for a **Developer ID Application** certificate
+- `APPLE_CERTIFICATE_PASSWORD` — password used when exporting that `.p12`
+- `KEYCHAIN_PASSWORD` — a dedicated, random password for the temporary CI keychain
+- `APPLE_ID` — Apple ID used to notarize releases
+- `APPLE_PASSWORD` — app-specific password for that Apple ID
+- `APPLE_TEAM_ID` — Apple Developer Team ID
+
+The release job refuses to publish without these values. That is intentional: ad-hoc
+signing gives each build a new macOS identity, which makes Accessibility, Input
+Monitoring, and notification permissions look like they belong to a new app after
+an update.
 
 Public key lives in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`). Losing the private key breaks OTA for existing installs — keep a backup of `~/.tauri/toudou.key`.
 
@@ -94,7 +117,9 @@ Public key lives in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`). Losi
 gh repo edit jakebodea/toudou --visibility public
 ```
 
-Apple Developer ID signing/notarization (no Gatekeeper nag) is optional and separate from updater signing.
+Tauri updater signing and Apple Developer ID signing solve different problems: the
+first authenticates the update payload; the second gives macOS a stable app identity
+and enables notarization.
 
 ## Wayfinder
 

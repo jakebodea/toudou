@@ -51,6 +51,7 @@
     "prepare": "lefthook install",
     "typecheck": "tsc --noEmit",
     "build:app": "tauri build",
+    "rebuild:app": "bash scripts/rebuild-and-install.sh",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "bindings": "cargo test --manifest-path src-tauri/Cargo.toml export_typescript_bindings_file",
     "check:bindings": "bun run bindings && git diff --exit-code -- src/lib/bindings.ts"

@@ -166,10 +166,24 @@ pub fn capture_permission_status() -> PermissionStatus {
 
 #[tauri::command]
 #[specta::specta]
-pub fn request_capture_permissions() -> PermissionStatus {
+pub fn request_accessibility_permission() -> PermissionStatus {
     #[cfg(target_os = "macos")]
     {
-        macos::request_permissions();
+        macos::request_accessibility_permission();
+        return macos::permission_status();
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        capture_permission_status()
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn request_input_monitoring_permission() -> PermissionStatus {
+    #[cfg(target_os = "macos")]
+    {
+        macos::request_input_monitoring_permission();
         return macos::permission_status();
     }
     #[cfg(not(target_os = "macos"))]

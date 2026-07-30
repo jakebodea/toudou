@@ -8,7 +8,6 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager, RunEvent, WindowEvent,
 };
-use tauri_plugin_notification::{NotificationExt, PermissionState};
 use tauri_specta::{collect_commands, Builder};
 
 fn show_main_window(app: &tauri::AppHandle) {
@@ -33,7 +32,8 @@ fn specta_builder() -> Builder {
         db_commands::seed_demo_captures,
         capture::capture_now,
         capture::capture_permission_status,
-        capture::request_capture_permissions,
+        capture::request_accessibility_permission,
+        capture::request_input_monitoring_permission,
         capture::ingest_capture,
     ])
 }
@@ -120,13 +120,6 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            match app.notification().permission_state() {
-                Ok(PermissionState::Granted) => {}
-                _ => {
-                    let _ = app.notification().request_permission();
-                }
-            }
-
             capture::start(app.handle());
             Ok(())
         })
@@ -138,12 +131,14 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_app, event| {
-            if let RunEvent::ExitRequested { api, code, .. } = &event {
-                if code.is_none() {
-                    api.prevent_exit();
-                }
-            }
+        .run(|app, event| match event {
+            #[cfg(target_os = "macos")]
+            RunEvent::Reopen {
+                has_visible_windows: false,
+                ..
+            } => show_main_window(app),
+            RunEvent::ExitRequested { api, code, .. } if code.is_none() => api.prevent_exit(),
+            _ => {}
         });
 }
 

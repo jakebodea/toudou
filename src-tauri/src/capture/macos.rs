@@ -6,8 +6,14 @@ use objc2_application_services::{
     AXUIElement,
 };
 use objc2_core_foundation::{CFBoolean, CFDictionary, CFRetained, CFString, CFType};
+use objc2_foundation::{NSString, NSURL};
 use std::ptr::NonNull;
 use tauri::AppHandle;
+
+const ACCESSIBILITY_SETTINGS_URL: &str =
+    "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility";
+const INPUT_MONITORING_SETTINGS_URL: &str =
+    "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_ListenEvent";
 
 pub fn permission_status() -> PermissionStatus {
     PermissionStatus {
@@ -16,14 +22,19 @@ pub fn permission_status() -> PermissionStatus {
     }
 }
 
-pub fn request_permissions() {
+pub fn request_accessibility_permission() {
     unsafe {
         let key = kAXTrustedCheckOptionPrompt;
         let value = CFBoolean::new(true);
         let options = CFDictionary::<CFString, CFBoolean>::from_slices(&[key], &[value]);
         let _ = AXIsProcessTrustedWithOptions(Some(options.as_ref()));
     }
+    open_settings_url(ACCESSIBILITY_SETTINGS_URL);
+}
+
+pub fn request_input_monitoring_permission() {
     double_shift::request_input_monitoring();
+    open_settings_url(INPUT_MONITORING_SETTINGS_URL);
 }
 
 pub fn start_double_shift_listener(app: AppHandle) {
@@ -49,6 +60,14 @@ fn frontmost_app_name() -> String {
         .and_then(|app| app.localizedName())
         .map(|name| name.to_string())
         .unwrap_or_else(|| "Unknown".to_string())
+}
+
+fn open_settings_url(settings_url: &str) {
+    let url_string = NSString::from_str(settings_url);
+    let Some(url) = NSURL::URLWithString(&url_string) else {
+        return;
+    };
+    let _ = NSWorkspace::sharedWorkspace().openURL(&url);
 }
 
 fn selected_text() -> Option<String> {

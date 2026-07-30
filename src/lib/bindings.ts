@@ -106,8 +106,11 @@ async captureNow() : Promise<Result<null, string>> {
 async capturePermissionStatus() : Promise<PermissionStatus> {
     return await TAURI_INVOKE("capture_permission_status");
 },
-async requestCapturePermissions() : Promise<PermissionStatus> {
-    return await TAURI_INVOKE("request_capture_permissions");
+async requestAccessibilityPermission() : Promise<PermissionStatus> {
+    return await TAURI_INVOKE("request_accessibility_permission");
+},
+async requestInputMonitoringPermission() : Promise<PermissionStatus> {
+    return await TAURI_INVOKE("request_input_monitoring_permission");
 },
 async ingestCapture(body: string, source: string) : Promise<Result<CaptureNotice, string>> {
     try {

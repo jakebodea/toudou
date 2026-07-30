@@ -1,20 +1,41 @@
-import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button.tsx";
-import { commands, type PermissionStatus } from "@/lib/bindings.ts";
-import { isTauriRuntime } from "@/lib/storage.ts";
+import { useCapturePermissionStatus } from "@/hooks/use-capture-permission-status.ts";
+import { commands } from "@/lib/bindings.ts";
+
+interface PermissionSetupActionProps {
+  buttonLabel: string;
+  isGranted: boolean;
+  label: string;
+  onOpen: () => Promise<void>;
+}
+
+function PermissionSetupAction({
+  buttonLabel,
+  isGranted,
+  label,
+  onOpen,
+}: PermissionSetupActionProps) {
+  if (isGranted) {
+    return <p className="text-foreground">{label} enabled ✓</p>;
+  }
+
+  return (
+    <Button
+      className="h-8 rounded-full"
+      onClick={() => {
+        void onOpen();
+      }}
+      size="sm"
+      type="button"
+      variant="secondary"
+    >
+      {buttonLabel}
+    </Button>
+  );
+}
 
 export function CapturePermissions() {
-  const [status, setStatus] = useState<PermissionStatus | null>(null);
-
-  useEffect(() => {
-    if (!isTauriRuntime()) {
-      return;
-    }
-    commands
-      .capturePermissionStatus()
-      .then(setStatus)
-      .catch(() => undefined);
-  }, []);
+  const { refresh, status } = useCapturePermissionStatus();
 
   if (!status) {
     return null;
@@ -28,27 +49,39 @@ export function CapturePermissions() {
   return (
     <div className="mx-4 mb-2 rounded-2xl bg-background px-3.5 py-3 text-muted-foreground text-sm shadow-sm ring-1 ring-foreground/5">
       <p className="leading-snug">
-        Double-Shift needs Input Monitoring
-        {status.inputMonitoring ? " ✓" : ""} and Accessibility
-        {status.accessibility ? " ✓" : ""} to read the selection. Nothing is
-        captured unless text is highlighted.{" "}
-        <span className="text-foreground">⌘⇧Space</span> uses the same
-        selection-only path.
+        Double-Shift needs two macOS permissions. Use the buttons to open
+        Privacy &amp; Security, then turn toudou on under Accessibility and
+        Input Monitoring.
       </p>
-      <Button
-        className="mt-2 h-8 rounded-full"
-        onClick={() => {
-          commands
-            .requestCapturePermissions()
-            .then(setStatus)
-            .catch(() => undefined);
-        }}
-        size="sm"
-        type="button"
-        variant="secondary"
-      >
-        Request permissions
-      </Button>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <PermissionSetupAction
+          buttonLabel="Set up Accessibility"
+          isGranted={status.accessibility}
+          label="Accessibility"
+          onOpen={async () => {
+            await commands.requestAccessibilityPermission();
+          }}
+        />
+        <PermissionSetupAction
+          buttonLabel="Set up Input Monitoring"
+          isGranted={status.inputMonitoring}
+          label="Input Monitoring"
+          onOpen={async () => {
+            await commands.requestInputMonitoringPermission();
+          }}
+        />
+        <Button
+          className="h-8 rounded-full"
+          onClick={() => {
+            void refresh();
+          }}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          Check again
+        </Button>
+      </div>
     </div>
   );
 }
