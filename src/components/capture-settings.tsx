@@ -1,5 +1,9 @@
 import { SettingsIcon } from "lucide-react";
 import { useState } from "react";
+import {
+  SettingsBody,
+  type SettingsBodyProps,
+} from "@/components/settings-body.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import {
   Dialog,
@@ -9,55 +13,27 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog.tsx";
-import { Label } from "@/components/ui/label.tsx";
-import { Separator } from "@/components/ui/separator.tsx";
-import { Switch } from "@/components/ui/switch.tsx";
-import type { InboxSort, Theme } from "@/lib/types.ts";
-import { checkAndInstallUpdate, updateResultMessage } from "@/lib/updates.ts";
-import { cn } from "@/lib/utils.ts";
+import { openSettingsWindow } from "@/lib/settings-window.ts";
+import { isTauriRuntime } from "@/lib/storage.ts";
 
-interface CaptureSettingsProps {
-  copySetsInProgress: boolean;
-  inboxSort: InboxSort;
-  inProgressEnabled: boolean;
-  onCopySetsInProgressChange: (enabled: boolean) => void;
-  onInboxSortChange: (sort: InboxSort) => void;
-  onInProgressEnabledChange: (enabled: boolean) => void;
+interface CaptureSettingsProps extends SettingsBodyProps {
   onOpenChange: (open: boolean) => void;
-  onThemeChange: (theme: Theme) => void;
-  onToast: (message: string) => void;
   open: boolean;
-  theme: Theme;
 }
 
 export function CaptureSettings({
-  copySetsInProgress,
-  inboxSort,
-  inProgressEnabled,
-  onCopySetsInProgressChange,
-  onInboxSortChange,
-  onInProgressEnabledChange,
-  onThemeChange,
-  onToast,
-  open,
   onOpenChange,
-  theme,
+  open,
+  ...settingsProps
 }: CaptureSettingsProps) {
-  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  if (isTauriRuntime()) {
+    return <SettingsTrigger />;
+  }
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogTrigger asChild>
-        <Button
-          aria-label="Settings"
-          className="size-10 shrink-0 rounded-full hover:bg-foreground/12 active:scale-[0.96] aria-expanded:bg-foreground/12 dark:aria-expanded:bg-foreground/15 dark:hover:bg-foreground/15"
-          size="icon"
-          title="Settings"
-          type="button"
-          variant="ghost"
-        >
-          <SettingsIcon className="size-4" />
-        </Button>
+        <SettingsTrigger />
       </DialogTrigger>
       <DialogContent className="gap-0 p-0 sm:max-w-md" showCloseButton>
         <DialogHeader className="gap-1 px-5 pt-5 pb-4">
@@ -67,186 +43,35 @@ export function CaptureSettings({
           </DialogDescription>
         </DialogHeader>
 
-        <Separator />
-
-        <div className="flex flex-col gap-6 px-5 py-5">
-          <section className="flex flex-col gap-3">
-            <div className="flex flex-col gap-0.5">
-              <h3 className="font-medium text-sm">Appearance</h3>
-              <p className="text-muted-foreground text-xs leading-relaxed">
-                Follows your system by default. Override with Dark or Light.
-              </p>
-            </div>
-            <div className="grid grid-cols-3 gap-1 rounded-xl bg-muted/70 p-1">
-              <SortOption
-                label="System"
-                onSelect={() => {
-                  onThemeChange("system");
-                }}
-                pressed={theme === "system"}
-              />
-              <SortOption
-                label="Dark"
-                onSelect={() => {
-                  onThemeChange("dark");
-                }}
-                pressed={theme === "dark"}
-              />
-              <SortOption
-                label="Light"
-                onSelect={() => {
-                  onThemeChange("light");
-                }}
-                pressed={theme === "light"}
-              />
-            </div>
-          </section>
-
-          <section className="flex flex-col gap-3">
-            <div className="flex flex-col gap-0.5">
-              <h3 className="font-medium text-sm">Inbox</h3>
-              <p className="text-muted-foreground text-xs leading-relaxed">
-                Sort active captures by when they were created.
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted/70 p-1">
-              <SortOption
-                label="Oldest first"
-                onSelect={() => {
-                  onInboxSortChange("oldest");
-                }}
-                pressed={inboxSort === "oldest"}
-              />
-              <SortOption
-                label="Newest first"
-                onSelect={() => {
-                  onInboxSortChange("newest");
-                }}
-                pressed={inboxSort === "newest"}
-              />
-            </div>
-          </section>
-
-          <section className="flex flex-col gap-4">
-            <div className="flex flex-col gap-0.5">
-              <h3 className="font-medium text-sm">Workflow</h3>
-              <p className="text-muted-foreground text-xs leading-relaxed">
-                Add an In Progress stage between inbox and Done.
-              </p>
-            </div>
-
-            <SettingRow
-              checked={inProgressEnabled}
-              description="Checkbox advances inbox → In Progress → Done. Restore from Done returns to In Progress."
-              id="in-progress-enabled"
-              label="Enable In Progress"
-              onCheckedChange={onInProgressEnabledChange}
-            />
-
-            <SettingRow
-              checked={copySetsInProgress}
-              description="Copying an inbox capture also moves it to In Progress."
-              disabled={!inProgressEnabled}
-              id="copy-sets-in-progress"
-              label="Copy sets In Progress"
-              onCheckedChange={onCopySetsInProgressChange}
-            />
-          </section>
-
-          <section className="flex flex-col gap-3">
-            <div className="flex flex-col gap-0.5">
-              <h3 className="font-medium text-sm">Updates</h3>
-              <p className="text-muted-foreground text-xs leading-relaxed">
-                Checks GitHub Releases. New builds install and relaunch
-                automatically.
-              </p>
-            </div>
-            <Button
-              disabled={checkingUpdate}
-              onClick={() => {
-                setCheckingUpdate(true);
-                void checkAndInstallUpdate()
-                  .then((result) => {
-                    onToast(updateResultMessage(result));
-                  })
-                  .finally(() => {
-                    setCheckingUpdate(false);
-                  });
-              }}
-              type="button"
-              variant="outline"
-            >
-              {checkingUpdate ? "Checking…" : "Check for updates"}
-            </Button>
-          </section>
-        </div>
+        <SettingsBody {...settingsProps} />
       </DialogContent>
     </Dialog>
   );
 }
 
-interface SortOptionProps {
-  label: string;
-  onSelect: () => void;
-  pressed: boolean;
-}
+function SettingsTrigger() {
+  const [opening, setOpening] = useState(false);
 
-function SortOption({ label, onSelect, pressed }: SortOptionProps) {
   return (
-    <button
-      aria-pressed={pressed}
-      className={cn(
-        "rounded-lg px-3 py-2 text-center text-sm transition-colors",
-        pressed
-          ? "bg-background font-medium text-foreground shadow-sm ring-1 ring-foreground/5"
-          : "text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
-      )}
-      onClick={onSelect}
+    <Button
+      aria-label="Settings"
+      className="size-10 shrink-0 rounded-full hover:bg-foreground/12 active:scale-[0.96] aria-expanded:bg-foreground/12 dark:aria-expanded:bg-foreground/15 dark:hover:bg-foreground/15"
+      disabled={opening}
+      onClick={() => {
+        if (!isTauriRuntime()) {
+          return;
+        }
+        setOpening(true);
+        void openSettingsWindow().finally(() => {
+          setOpening(false);
+        });
+      }}
+      size="icon"
+      title="Settings"
       type="button"
+      variant="ghost"
     >
-      {label}
-    </button>
-  );
-}
-
-interface SettingRowProps {
-  checked: boolean;
-  description: string;
-  disabled?: boolean;
-  id: string;
-  label: string;
-  onCheckedChange: (checked: boolean) => void;
-}
-
-function SettingRow({
-  checked,
-  description,
-  disabled = false,
-  id,
-  label,
-  onCheckedChange,
-}: SettingRowProps) {
-  return (
-    <div
-      className={cn(
-        "flex items-start justify-between gap-4",
-        disabled && "opacity-45"
-      )}
-    >
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <Label className="font-medium text-sm" htmlFor={id}>
-          {label}
-        </Label>
-        <p className="text-muted-foreground text-xs leading-relaxed">
-          {description}
-        </p>
-      </div>
-      <Switch
-        checked={checked}
-        disabled={disabled}
-        id={id}
-        onCheckedChange={onCheckedChange}
-      />
-    </div>
+      <SettingsIcon className="size-4" />
+    </Button>
   );
 }

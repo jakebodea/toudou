@@ -5,6 +5,19 @@ const IN_PROGRESS_ENABLED_KEY = "toudou.inProgressEnabled";
 const COPY_SETS_IN_PROGRESS_KEY = "toudou.copySetsInProgress";
 const THEME_KEY = "toudou.theme";
 
+export const PREFERENCE_CHANGE_EVENT = "preferences-changed";
+
+export type PreferenceKey =
+  | "copySetsInProgress"
+  | "inboxSort"
+  | "inProgressEnabled"
+  | "theme";
+
+export interface PreferenceChange {
+  key: PreferenceKey;
+  value: boolean | InboxSort | Theme;
+}
+
 function readBoolean(key: string, fallback: boolean): boolean {
   try {
     const value = localStorage.getItem(key);
