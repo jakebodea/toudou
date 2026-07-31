@@ -64,6 +64,13 @@ import {
   LIST_LAYOUT_TRANSITION,
 } from "@/lib/list-motion.ts";
 import {
+  type ComposerMedia,
+  isNativeMedia,
+  mediaKindFromFile,
+} from "@/lib/media.ts";
+import {
+  PREFERENCE_CHANGE_EVENT,
+  type PreferenceChange,
   readCopySetsInProgress,
   readInboxSort,
   readInProgressEnabled,
@@ -76,7 +83,8 @@ import {
 import { seedCaptures } from "@/lib/seed.ts";
 import {
   clearAllCaptures,
-  createImageCapture,
+  createMediaCapture,
+  createMediaCaptureFromPath,
   fileToBase64,
   isTauriRuntime,
   listCaptures,
@@ -104,6 +112,44 @@ const TOAST_MS = 1200;
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Let the checkmark paint before the card leaves the inbox. */
 const CHECK_ACK_MS = 220;
+
+function applyPreferenceChange(
+  payload: PreferenceChange,
+  setCopySetsInProgress: (enabled: boolean) => void,
+  setInboxSort: (sort: InboxSort) => void,
+  setInProgressEnabled: (enabled: boolean) => void,
+  setTheme: (theme: Theme) => void
+): void {
+  const key: string = payload.key;
+  switch (key) {
+    case "copySetsInProgress":
+      if (typeof payload.value === "boolean") {
+        setCopySetsInProgress(payload.value);
+      }
+      break;
+    case "inboxSort":
+      if (payload.value === "oldest" || payload.value === "newest") {
+        setInboxSort(payload.value);
+      }
+      break;
+    case "inProgressEnabled":
+      if (typeof payload.value === "boolean") {
+        setInProgressEnabled(payload.value);
+      }
+      break;
+    case "theme":
+      if (
+        payload.value === "dark" ||
+        payload.value === "light" ||
+        payload.value === "system"
+      ) {
+        setTheme(payload.value);
+      }
+      break;
+    default:
+      break;
+  }
+}
 
 export function CaptureShell() {
   const reduceMotion = useReducedMotion();
@@ -229,6 +275,38 @@ export function CaptureShell() {
       applyTheme("system");
     });
   }, [theme]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    let cancelled = false;
+    const unlisten = listen<PreferenceChange>(
+      PREFERENCE_CHANGE_EVENT,
+      ({ payload }) => {
+        if (cancelled) {
+          return;
+        }
+        applyPreferenceChange(
+          payload,
+          setCopySetsInProgress,
+          setInboxSort,
+          setInProgressEnabled,
+          setTheme
+        );
+      }
+    );
+
+    return () => {
+      cancelled = true;
+      unlisten
+        .then((fn) => {
+          fn();
+        })
+        .catch(() => undefined);
+    };
+  }, []);
 
   useEffect(() => {
     if (!(ready && isTauriRuntime())) {
@@ -387,19 +465,30 @@ export function CaptureShell() {
     setCaptures((prev) => [capture, ...prev]);
   };
 
-  const addImageCapture = (file: File, body = "", tags: string[] = []) => {
+  const addMediaCapture = (
+    media: ComposerMedia,
+    body = "",
+    tags: string[] = []
+  ) => {
     const nextBody = stripTrailingDashes(body.trimEnd()).trim();
     const nextTags = normalizeTags(tags);
     if (isTauriRuntime()) {
-      fileToBase64(file)
-        .then((bytesBase64) =>
-          createImageCapture(
-            bytesBase64,
-            file.type || "image/png",
-            "toudou",
-            nextBody
-          )
-        )
+      const create = isNativeMedia(media)
+        ? createMediaCaptureFromPath(media.path, "toudou", nextBody)
+        : fileToBase64(media).then((bytesBase64) => {
+            const kind = mediaKindFromFile(media);
+            if (!kind) {
+              throw new Error("Unsupported media type");
+            }
+            return createMediaCapture(
+              bytesBase64,
+              media.type || "image/png",
+              kind,
+              "toudou",
+              nextBody
+            );
+          });
+      create
         .then(async (saved) => {
           if (nextTags.length === 0) {
             return saved;
@@ -414,6 +503,13 @@ export function CaptureShell() {
       return;
     }
 
+    if (isNativeMedia(media)) {
+      return;
+    }
+    const kind = mediaKindFromFile(media);
+    if (!kind) {
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = typeof reader.result === "string" ? reader.result : null;
@@ -428,19 +524,23 @@ export function CaptureShell() {
         id: newId(),
         imagePath: dataUrl,
         inProgress: false,
-        kind: "image",
+        kind,
         section: "inbox",
         source: "toudou",
         tags: nextTags,
       };
       setCaptures((prev) => [capture, ...prev]);
     };
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(media);
   };
 
-  const submitComposer = (body: string, image: File | null, tags: string[]) => {
-    if (image) {
-      addImageCapture(image, body, tags);
+  const submitComposer = (
+    body: string,
+    media: ComposerMedia | null,
+    tags: string[]
+  ) => {
+    if (media) {
+      addMediaCapture(media, body, tags);
       return;
     }
     addCapture(body, "toudou", tags);
@@ -1026,8 +1126,8 @@ export function CaptureShell() {
         <div className="pointer-events-auto px-4">
           <CaptureComposer
             knownTags={knownTags}
-            onSubmit={({ body, image, tags }) => {
-              submitComposer(body, image, tags);
+            onSubmit={({ body, media, tags }) => {
+              submitComposer(body, media, tags);
             }}
             ref={composerRef}
           />

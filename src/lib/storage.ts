@@ -15,7 +15,10 @@ function unwrap<T>(result: Result<T, string>): T {
 }
 
 function kindFromWire(kind: string): CaptureKind {
-  return kind === "image" ? "image" : "text";
+  if (kind === "image" || kind === "video") {
+    return kind;
+  }
+  return "text";
 }
 
 function fromWire(row: WireCapture): Capture {
@@ -80,16 +83,37 @@ export async function createCapture(capture: Capture): Promise<Capture> {
   return fromWire(row);
 }
 
-export async function createImageCapture(
+export async function createMediaCapture(
   bytesBase64: string,
   mime: string,
+  kind: Extract<CaptureKind, "image" | "video">,
   source = "toudou",
   body = ""
 ): Promise<Capture> {
   const row = unwrap(
-    await commands.createImageCapture(bytesBase64, mime, source, body)
+    await commands.createMediaCapture(bytesBase64, mime, kind, source, body)
   );
   return fromWire(row);
+}
+
+export async function createMediaCaptureFromPath(
+  path: string,
+  source = "toudou",
+  body = ""
+): Promise<Capture> {
+  const row = unwrap(
+    await commands.createMediaCaptureFromPath(path, source, body)
+  );
+  return fromWire(row);
+}
+
+export async function getDroppedImagePreview(path: string): Promise<string> {
+  const preview = unwrap(await commands.getDroppedImagePreview(path));
+  return `data:${preview.mime};base64,${preview.bytesBase64}`;
+}
+
+export async function quickLookImage(path: string): Promise<void> {
+  unwrap(await commands.quickLookImage(path));
 }
 
 export async function updateCaptureBody(

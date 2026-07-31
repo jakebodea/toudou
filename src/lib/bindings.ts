@@ -23,9 +23,33 @@ async createCapture(capture: NewCapture) : Promise<Result<Capture, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-async createImageCapture(bytesBase64: string, mime: string, source: string, body: string) : Promise<Result<Capture, string>> {
+async createMediaCapture(bytesBase64: string, mime: string, kind: string, source: string, body: string) : Promise<Result<Capture, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("create_image_capture", { bytesBase64, mime, source, body }) };
+    return { status: "ok", data: await TAURI_INVOKE("create_media_capture", { bytesBase64, mime, kind, source, body }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async createMediaCaptureFromPath(path: string, source: string, body: string) : Promise<Result<Capture, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_media_capture_from_path", { path, source, body }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getDroppedImagePreview(path: string) : Promise<Result<DroppedImagePreview, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_dropped_image_preview", { path }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async quickLookImage(path: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("quick_look_image", { path }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -134,6 +158,7 @@ async ingestCapture(body: string, source: string) : Promise<Result<CaptureNotice
 
 export type Capture = { id: string; body: string; source: string; section: string; tags: string[]; done: boolean; doneAt: number | null; createdAt: number; kind: string; imagePath: string | null; inProgress: boolean }
 export type CaptureNotice = { id: string; body: string; source: string }
+export type DroppedImagePreview = { bytesBase64: string; mime: string }
 export type NewCapture = { id: string; body: string; source: string; section: string; tags: string[]; createdAt: number; done?: boolean; doneAt?: number | null; kind?: string; imagePath?: string | null; inProgress?: boolean }
 export type PermissionStatus = { accessibility: boolean; inputMonitoring: boolean }
 

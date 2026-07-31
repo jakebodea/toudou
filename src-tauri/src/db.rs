@@ -387,7 +387,35 @@ pub fn extension_for_mime(mime: &str) -> &'static str {
         "image/jpeg" | "image/jpg" => "jpg",
         "image/webp" => "webp",
         "image/gif" => "gif",
+        "image/avif" => "avif",
+        "image/heic" => "heic",
+        "image/heif" => "heif",
+        "video/mp4" => "mp4",
+        "video/webm" => "webm",
+        "video/quicktime" => "mov",
+        "video/ogg" => "ogv",
+        "video/x-m4v" => "m4v",
+        "video/x-msvideo" => "avi",
         _ => "png",
+    }
+}
+
+pub fn media_metadata_for_path(path: &Path) -> Option<(&'static str, &'static str)> {
+    let extension = path.extension()?.to_str()?.to_ascii_lowercase();
+    match extension.as_str() {
+        "jpg" | "jpeg" => Some(("image", "image/jpeg")),
+        "png" => Some(("image", "image/png")),
+        "webp" => Some(("image", "image/webp")),
+        "gif" => Some(("image", "image/gif")),
+        "avif" => Some(("image", "image/avif")),
+        "heic" | "heif" => Some(("image", "image/heic")),
+        "mp4" => Some(("video", "video/mp4")),
+        "m4v" => Some(("video", "video/x-m4v")),
+        "mov" => Some(("video", "video/quicktime")),
+        "webm" => Some(("video", "video/webm")),
+        "ogv" => Some(("video", "video/ogg")),
+        "avi" => Some(("video", "video/x-msvideo")),
+        _ => None,
     }
 }
 
@@ -490,6 +518,27 @@ mod tests {
         assert_eq!(rows[0].image_path, None);
         assert!(!rows[0].in_progress);
         assert_eq!(rows[0].tags, vec!["tag".to_string()]);
+    }
+
+    #[test]
+    fn media_extensions_preserve_common_image_and_video_types() {
+        assert_eq!(extension_for_mime("image/webp"), "webp");
+        assert_eq!(extension_for_mime("video/mp4"), "mp4");
+        assert_eq!(extension_for_mime("video/quicktime"), "mov");
+        assert_eq!(extension_for_mime("video/webm"), "webm");
+    }
+
+    #[test]
+    fn detects_media_from_dropped_paths() {
+        assert_eq!(
+            media_metadata_for_path(Path::new("/Users/jake/Desktop/Photo.JPG")),
+            Some(("image", "image/jpeg"))
+        );
+        assert_eq!(
+            media_metadata_for_path(Path::new("/Users/jake/Desktop/Clip.mov")),
+            Some(("video", "video/quicktime"))
+        );
+        assert_eq!(media_metadata_for_path(Path::new("notes.txt")), None);
     }
 
     #[test]

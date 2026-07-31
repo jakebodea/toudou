@@ -1,4 +1,4 @@
-export type CaptureKind = "text" | "image";
+export type CaptureKind = "text" | "image" | "video";
 
 /** Workflow stage for a Capture. */
 export type CaptureStatus = "active" | "in_progress" | "done";
@@ -9,7 +9,7 @@ export interface Capture {
   done: boolean;
   doneAt: number | null;
   id: string;
-  /** Absolute path, data URL, or null. */
+  /** Absolute media path, data URL, or null. Kept under the legacy DB field name. */
   imagePath: string | null;
   /** Middle stage between inbox and Done; mutually exclusive with done. */
   inProgress: boolean;

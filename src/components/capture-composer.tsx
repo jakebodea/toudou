@@ -1,4 +1,5 @@
-import { XIcon } from "lucide-react";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { FileIcon, ImagePlusIcon, XIcon } from "lucide-react";
 import {
   type Ref,
   useEffect,
@@ -33,13 +34,21 @@ import {
   normalizeTag,
   normalizeTags,
 } from "@/lib/captures.ts";
+import {
+  type ComposerMedia,
+  isNativeMedia,
+  mediaFromPath,
+  mediaKindFromFile,
+} from "@/lib/media.ts";
+import { getDroppedImagePreview, isTauriRuntime } from "@/lib/storage.ts";
+import { cn } from "@/lib/utils.ts";
 
 const LONE_HASH = /(^|\s)#(?=\s|$)/g;
 const MULTI_SPACE = /\s+/g;
 
 export interface CaptureComposerSubmit {
   body: string;
-  image: File | null;
+  media: ComposerMedia | null;
   tags: string[];
 }
 
@@ -53,21 +62,72 @@ interface CaptureComposerProps {
   ref?: Ref<CaptureComposerHandle>;
 }
 
-function imageFileFromClipboard(data: DataTransfer | null): File | null {
+function isSupportedMedia(file: File): boolean {
+  return mediaKindFromFile(file) !== null;
+}
+
+function mediaFileFromTransfer(data: DataTransfer | null): File | null {
   if (!data) {
     return null;
   }
   for (const item of data.items) {
-    if (item.kind === "file" && item.type.startsWith("image/")) {
-      return item.getAsFile();
+    if (
+      item.kind === "file" &&
+      (item.type.startsWith("image/") || item.type.startsWith("video/"))
+    ) {
+      const file = item.getAsFile();
+      if (file) {
+        return file;
+      }
     }
   }
   for (const file of data.files) {
-    if (file.type.startsWith("image/")) {
+    if (isSupportedMedia(file)) {
       return file;
     }
   }
   return null;
+}
+
+function PendingMediaPreview({
+  media,
+  previewUrl,
+}: {
+  media: ComposerMedia;
+  previewUrl: string | null;
+}) {
+  if (!previewUrl) {
+    return (
+      <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-muted text-muted-foreground ring-1 ring-foreground/5">
+        <FileIcon className="size-5" />
+      </div>
+    );
+  }
+  if (
+    (isNativeMedia(media) && media.kind === "video") ||
+    (!isNativeMedia(media) && media.type.startsWith("video/"))
+  ) {
+    return (
+      <video
+        aria-label="Pending video attachment"
+        className="h-14 w-14 rounded-xl object-cover ring-1 ring-foreground/5"
+        muted
+        playsInline
+        preload="metadata"
+        src={previewUrl}
+      />
+    );
+  }
+  return (
+    <img
+      alt="Pending attachment"
+      className="h-14 w-14 rounded-xl object-cover ring-1 ring-foreground/5"
+      draggable={false}
+      height={56}
+      src={previewUrl}
+      width={56}
+    />
+  );
 }
 
 function insertAtCaret(
@@ -95,9 +155,11 @@ export function CaptureComposer({
   const [value, setValue] = useState("");
   const [caret, setCaret] = useState(0);
   const [pendingTags, setPendingTags] = useState<string[]>([]);
-  const [pendingImage, setPendingImage] = useState<File | null>(null);
+  const [pendingMedia, setPendingMedia] = useState<ComposerMedia | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [highlight, setHighlight] = useState(0);
+  const dragDepth = useRef(0);
+  const [isDraggingMedia, setIsDraggingMedia] = useState(false);
 
   useImperativeHandle(ref, () => ({
     focus: () => {
@@ -149,19 +211,80 @@ export function CaptureComposer({
   const selectedOption = optionTags[safeHighlight] ?? "";
 
   useEffect(() => {
-    if (!pendingImage) {
+    if (!pendingMedia) {
       setPreviewUrl(null);
       return;
     }
-    const url = URL.createObjectURL(pendingImage);
+    if (isNativeMedia(pendingMedia)) {
+      if (pendingMedia.kind === "video") {
+        setPreviewUrl(null);
+        return;
+      }
+      let cancelled = false;
+      getDroppedImagePreview(pendingMedia.path)
+        .then((previewDataUrl) => {
+          if (!cancelled) {
+            setPreviewUrl(previewDataUrl);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setPreviewUrl(null);
+          }
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+    const url = URL.createObjectURL(pendingMedia);
     setPreviewUrl(url);
     return () => {
       URL.revokeObjectURL(url);
     };
-  }, [pendingImage]);
+  }, [pendingMedia]);
 
-  const clearPendingImage = () => {
-    setPendingImage(null);
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+
+    getCurrentWebview()
+      .onDragDropEvent((event) => {
+        if (event.payload.type === "enter" || event.payload.type === "over") {
+          setIsDraggingMedia(true);
+          return;
+        }
+        if (event.payload.type === "leave") {
+          setIsDraggingMedia(false);
+          return;
+        }
+        setIsDraggingMedia(false);
+        const media = event.payload.paths
+          .map(mediaFromPath)
+          .find((item) => item !== null);
+        if (media) {
+          setPendingMedia(media);
+        }
+      })
+      .then((nextUnlisten) => {
+        if (disposed) {
+          nextUnlisten();
+          return;
+        }
+        unlisten = nextUnlisten;
+      })
+      .catch(() => undefined);
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+
+  const clearPendingMedia = () => {
+    setPendingMedia(null);
   };
 
   const syncCaret = (el: HTMLTextAreaElement) => {
@@ -221,18 +344,18 @@ export function CaptureComposer({
   const submit = () => {
     const parsed = extractComposerTags(stripLoneHash(value));
     const tags = normalizeTags([...pendingTags, ...parsed.tags]);
-    if (parsed.body.length === 0 && !pendingImage) {
+    if (parsed.body.length === 0 && !pendingMedia) {
       return;
     }
     onSubmit({
       body: parsed.body,
-      image: pendingImage,
+      media: pendingMedia,
       tags,
     });
     setValue("");
     setCaret(0);
     setPendingTags([]);
-    setPendingImage(null);
+    setPendingMedia(null);
   };
 
   const handleEnter = () => {
@@ -253,15 +376,52 @@ export function CaptureComposer({
   return (
     <Popover open={showSuggestions}>
       <PopoverAnchor asChild>
+        {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: The composer form accepts dropped media files. */}
         <form
           className="flex flex-col gap-1.5"
+          onDragEnter={(event) => {
+            if (!event.dataTransfer.types.includes("Files")) {
+              return;
+            }
+            event.preventDefault();
+            dragDepth.current += 1;
+            setIsDraggingMedia(true);
+          }}
+          onDragLeave={(event) => {
+            if (!event.dataTransfer.types.includes("Files")) {
+              return;
+            }
+            dragDepth.current -= 1;
+            if (dragDepth.current <= 0) {
+              dragDepth.current = 0;
+              setIsDraggingMedia(false);
+            }
+          }}
+          onDragOver={(event) => {
+            if (event.dataTransfer.types.includes("Files")) {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "copy";
+            }
+          }}
+          onDrop={(event) => {
+            dragDepth.current = 0;
+            setIsDraggingMedia(false);
+            if (!event.dataTransfer.types.includes("Files")) {
+              return;
+            }
+            event.preventDefault();
+            const file = mediaFileFromTransfer(event.dataTransfer);
+            if (file) {
+              setPendingMedia(file);
+            }
+          }}
           onPaste={(event) => {
-            const file = imageFileFromClipboard(event.clipboardData);
+            const file = mediaFileFromTransfer(event.clipboardData);
             if (!file) {
               return;
             }
             event.preventDefault();
-            setPendingImage(file);
+            setPendingMedia(file);
           }}
           onSubmit={(event) => {
             event.preventDefault();
@@ -292,22 +452,23 @@ export function CaptureComposer({
               ))}
             </div>
           ) : null}
-          <InputGroup className="h-auto min-h-10 rounded-2xl border-0 bg-background/90 shadow-sm ring-1 ring-foreground/5 transition-[box-shadow] duration-150 has-[[data-slot=input-group-control]:focus-visible]:border-transparent has-[[data-slot=input-group-control]:focus-visible]:shadow-md has-[[data-slot=input-group-control]:focus-visible]:ring-foreground/10">
-            {previewUrl ? (
+          <InputGroup
+            className={cn(
+              "h-auto min-h-10 rounded-2xl border-0 bg-background/90 shadow-sm ring-1 ring-foreground/5 transition-[box-shadow] duration-150 has-[[data-slot=input-group-control]:focus-visible]:border-transparent has-[[data-slot=input-group-control]:focus-visible]:shadow-md has-[[data-slot=input-group-control]:focus-visible]:ring-foreground/10",
+              isDraggingMedia && "ring-2 ring-foreground/35"
+            )}
+          >
+            {pendingMedia ? (
               <InputGroupAddon align="block-start">
                 <div className="flex items-start gap-2">
-                  <img
-                    alt="Pending attachment"
-                    className="h-14 w-14 rounded-xl object-cover ring-1 ring-foreground/5"
-                    draggable={false}
-                    height={56}
-                    src={previewUrl}
-                    width={56}
+                  <PendingMediaPreview
+                    media={pendingMedia}
+                    previewUrl={previewUrl}
                   />
                   <Button
-                    aria-label="Remove image"
+                    aria-label="Remove attachment"
                     className="size-7 shrink-0 rounded-full text-muted-foreground"
-                    onClick={clearPendingImage}
+                    onClick={clearPendingMedia}
                     size="icon-xs"
                     type="button"
                     variant="ghost"
@@ -412,13 +573,21 @@ export function CaptureComposer({
               placeholder={
                 pendingTags.length > 0
                   ? "Keep writing, or # for another tag"
-                  : "Add a note, #tag, or paste an image"
+                  : "Add a note, #tag, or drop media"
               }
               ref={inputRef}
               rows={1}
               spellCheck
               value={value}
             />
+            {isDraggingMedia ? (
+              <InputGroupAddon align="inline-end">
+                <span className="flex items-center gap-1.5 text-muted-foreground text-xs">
+                  <ImagePlusIcon className="size-3.5" />
+                  Drop image or video
+                </span>
+              </InputGroupAddon>
+            ) : null}
           </InputGroup>
         </form>
       </PopoverAnchor>

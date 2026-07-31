@@ -1,5 +1,8 @@
 mod capture;
 mod db;
+#[cfg(target_os = "macos")]
+#[path = "quick-look.rs"]
+mod quick_look;
 
 use db::Db;
 use specta_typescript::{BigIntExportBehavior, Typescript};
@@ -21,7 +24,10 @@ fn specta_builder() -> Builder {
     Builder::<tauri::Wry>::new().commands(collect_commands![
         db_commands::list_captures,
         db_commands::create_capture,
-        db_commands::create_image_capture,
+        db_commands::create_media_capture,
+        db_commands::create_media_capture_from_path,
+        db_commands::get_dropped_image_preview,
+        db_commands::quick_look_image,
         db_commands::update_capture_body,
         db_commands::update_capture_tags,
         db_commands::set_capture_done,
@@ -145,8 +151,68 @@ pub fn run() {
 mod db_commands {
     use crate::db::{self, Capture, Db, NewCapture};
     use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use serde::Serialize;
+    use specta::Type;
     use tauri::{AppHandle, Manager};
     use uuid::Uuid;
+
+    const MAX_IMAGE_PREVIEW_BYTES: u64 = 12 * 1024 * 1024;
+
+    #[derive(Serialize, Type)]
+    #[serde(rename_all = "camelCase")]
+    pub struct DroppedImagePreview {
+        pub bytes_base64: String,
+        pub mime: String,
+    }
+
+    fn persist_media_capture(
+        app: &AppHandle,
+        state: &tauri::State<'_, Db>,
+        bytes: Vec<u8>,
+        mime: &str,
+        kind: &str,
+        source: String,
+        body: String,
+    ) -> Result<Capture, String> {
+        if bytes.is_empty() {
+            return Err("empty media attachment".into());
+        }
+        if !matches!(kind, "image" | "video") {
+            return Err("invalid media kind".into());
+        }
+        if !mime.starts_with(&format!("{kind}/")) {
+            return Err("media type does not match its kind".into());
+        }
+
+        let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+        let attachments = data_dir.join("attachments");
+        std::fs::create_dir_all(&attachments).map_err(|e| e.to_string())?;
+
+        let id = Uuid::new_v4().to_string();
+        let ext = db::extension_for_mime(mime);
+        let path = attachments.join(format!("{id}.{ext}"));
+        std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+
+        let capture = NewCapture {
+            id: id.clone(),
+            body,
+            source,
+            section: "inbox".to_string(),
+            tags: vec![],
+            created_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0),
+            done: false,
+            done_at: None,
+            kind: kind.to_string(),
+            image_path: Some(path.to_string_lossy().into_owned()),
+            in_progress: false,
+        };
+
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        db::create_capture(&conn, &capture)
+    }
 
     #[tauri::command]
     #[specta::specta]
@@ -167,49 +233,74 @@ mod db_commands {
 
     #[tauri::command]
     #[specta::specta]
-    pub fn create_image_capture(
+    pub fn create_media_capture(
         app: AppHandle,
         state: tauri::State<'_, Db>,
         bytes_base64: String,
         mime: String,
+        kind: String,
         source: String,
         body: String,
     ) -> Result<Capture, String> {
         let bytes = STANDARD
             .decode(bytes_base64.trim())
             .map_err(|e| e.to_string())?;
-        if bytes.is_empty() {
-            return Err("empty image".into());
+        persist_media_capture(&app, &state, bytes, &mime, &kind, source, body)
+    }
+
+    #[tauri::command]
+    #[specta::specta]
+    pub fn create_media_capture_from_path(
+        app: AppHandle,
+        state: tauri::State<'_, Db>,
+        path: String,
+        source: String,
+        body: String,
+    ) -> Result<Capture, String> {
+        let path = std::path::PathBuf::from(path);
+        let (kind, mime) = db::media_metadata_for_path(&path)
+            .ok_or_else(|| "unsupported media attachment".to_string())?;
+        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+        persist_media_capture(&app, &state, bytes, mime, kind, source, body)
+    }
+
+    #[tauri::command]
+    #[specta::specta]
+    pub fn get_dropped_image_preview(path: String) -> Result<DroppedImagePreview, String> {
+        let path = std::path::PathBuf::from(path);
+        let (kind, mime) = db::media_metadata_for_path(&path)
+            .ok_or_else(|| "unsupported media attachment".to_string())?;
+        if kind != "image" {
+            return Err("previews are only available for images".to_string());
+        }
+        let size = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
+        if size > MAX_IMAGE_PREVIEW_BYTES {
+            return Err("image preview is limited to 12 MB".to_string());
+        }
+        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+        Ok(DroppedImagePreview {
+            bytes_base64: STANDARD.encode(bytes),
+            mime: mime.to_string(),
+        })
+    }
+
+    #[tauri::command]
+    #[specta::specta]
+    pub fn quick_look_image(app: AppHandle, path: String) -> Result<(), String> {
+        let path = std::path::PathBuf::from(path);
+        let (kind, _) = db::media_metadata_for_path(&path)
+            .ok_or_else(|| "unsupported media attachment".to_string())?;
+        if kind != "image" {
+            return Err("Quick Look is only available for images".to_string());
         }
 
-        let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-        let attachments = data_dir.join("attachments");
-        std::fs::create_dir_all(&attachments).map_err(|e| e.to_string())?;
+        #[cfg(target_os = "macos")]
+        app.run_on_main_thread(move || crate::quick_look::show(&path))
+            .map_err(|e| e.to_string())?;
 
-        let id = Uuid::new_v4().to_string();
-        let ext = db::extension_for_mime(&mime);
-        let path = attachments.join(format!("{id}.{ext}"));
-        std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
-
-        let capture = NewCapture {
-            id: id.clone(),
-            body,
-            source,
-            section: "inbox".to_string(),
-            tags: vec![],
-            created_at: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis() as i64)
-                .unwrap_or(0),
-            done: false,
-            done_at: None,
-            kind: "image".to_string(),
-            image_path: Some(path.to_string_lossy().into_owned()),
-            in_progress: false,
-        };
-
-        let conn = state.0.lock().map_err(|e| e.to_string())?;
-        db::create_capture(&conn, &capture)
+        #[cfg(not(target_os = "macos"))]
+        let _ = app;
+        Ok(())
     }
 
     #[tauri::command]

@@ -1,5 +1,12 @@
 import { XIcon } from "lucide-react";
-import { type RefObject, useEffect, useRef, useState } from "react";
+import {
+  type MouseEvent,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   CaptureEditor,
   type CaretPoint,
@@ -17,7 +24,12 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu.tsx";
 import { parseTags } from "@/lib/captures.ts";
-import { captureImageSrc } from "@/lib/storage.ts";
+import { copyCaptureContent } from "@/lib/inbox-keyboard.ts";
+import {
+  captureImageSrc,
+  isTauriRuntime,
+  quickLookImage,
+} from "@/lib/storage.ts";
 import {
   type Capture,
   type CaptureStatus,
@@ -54,11 +66,52 @@ interface CaptureBodyProps {
   listFocused: boolean;
   onCancelEdit: () => void;
   onCommitEdit: () => void;
-  onCopyImage: () => void;
-  onCopyText: () => void;
+  onCopyContent: () => void;
   onDraftChange: (value: string) => void;
+  onOpenImage: () => void;
   onStartEdit: (point?: CaretPoint) => void;
   onToggleSelect: () => void;
+}
+
+function CaptureMediaPreview({
+  kind,
+  onCopyContent,
+  src,
+}: {
+  kind: "image" | "video";
+  onCopyContent?: () => void;
+  src: string | null;
+}) {
+  if (!src) {
+    return <p className="text-[15px] text-muted-foreground">Attachment</p>;
+  }
+  if (kind === "video") {
+    return (
+      <video
+        aria-label="Video attachment"
+        className="h-48 w-full max-w-xl rounded-xl border-2 border-border/80 bg-muted/30 object-cover p-0.5 shadow-sm"
+        controls
+        muted
+        onContextMenu={(event) => {
+          event.preventDefault();
+          onCopyContent?.();
+        }}
+        playsInline
+        preload="metadata"
+        src={src}
+      />
+    );
+  }
+  return (
+    <img
+      alt=""
+      className="h-48 w-full max-w-xl rounded-xl border-2 border-border/80 bg-muted/30 object-cover p-0.5 shadow-sm"
+      draggable={false}
+      height={192}
+      src={src}
+      width={320}
+    />
+  );
 }
 
 function CaptureBody({
@@ -69,49 +122,53 @@ function CaptureBody({
   listFocused,
   onCancelEdit,
   onCommitEdit,
-  onCopyImage,
-  onCopyText,
+  onCopyContent,
   onDraftChange,
+  onOpenImage,
   onStartEdit,
   onToggleSelect,
 }: CaptureBodyProps) {
   const imageSrc = captureImageSrc(capture);
-  const hasImage = capture.kind === "image";
+  const mediaKind =
+    capture.kind === "image" || capture.kind === "video" ? capture.kind : null;
+  const hasMedia = mediaKind !== null;
+  const openImage = (event: MouseEvent<HTMLElement>) => {
+    if (event.metaKey || event.ctrlKey) {
+      onToggleSelect();
+      return;
+    }
+    onOpenImage();
+  };
+
+  const copyMediaContent = (event: MouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    onCopyContent();
+  };
+  let mediaAttachment: ReactNode = null;
+  if (mediaKind === "image") {
+    mediaAttachment = (
+      <button
+        className="w-full max-w-xl text-left"
+        onClick={openImage}
+        onContextMenu={copyMediaContent}
+        type="button"
+      >
+        <CaptureMediaPreview kind={mediaKind} src={imageSrc} />
+      </button>
+    );
+  } else if (mediaKind === "video") {
+    mediaAttachment = (
+      <CaptureMediaPreview
+        kind={mediaKind}
+        onCopyContent={onCopyContent}
+        src={imageSrc}
+      />
+    );
+  }
 
   return (
     <div className="flex w-full flex-col gap-2">
-      {hasImage ? (
-        <button
-          className="w-full text-left"
-          onClick={(event) => {
-            if (event.metaKey || event.ctrlKey) {
-              onToggleSelect();
-              return;
-            }
-            if (!capture.done) {
-              onStartEdit();
-            }
-          }}
-          onContextMenu={(event) => {
-            event.preventDefault();
-            onCopyImage();
-          }}
-          type="button"
-        >
-          {imageSrc ? (
-            <img
-              alt=""
-              className="h-48 w-full rounded-xl object-cover"
-              draggable={false}
-              height={192}
-              src={imageSrc}
-              width={320}
-            />
-          ) : (
-            <p className="text-[15px] text-muted-foreground">Attachment</p>
-          )}
-        </button>
-      ) : null}
+      {mediaAttachment}
 
       {editing && !capture.done ? (
         <CaptureEditor
@@ -123,7 +180,7 @@ function CaptureBody({
         />
       ) : null}
 
-      {!editing && (capture.body.length > 0 || !hasImage) ? (
+      {!editing && (capture.body.length > 0 || !hasMedia) ? (
         // Markdown may include links/inputs; a <button> wrapper would nest interactives.
         // biome-ignore lint/a11y/useSemanticElements: div hosts rendered markdown safely
         <div
@@ -139,7 +196,7 @@ function CaptureBody({
           }}
           onContextMenu={(event) => {
             event.preventDefault();
-            onCopyText();
+            onCopyContent();
           }}
           onKeyDown={(event) => {
             if (event.key !== "Enter" && event.key !== " ") {
@@ -461,26 +518,8 @@ export function CaptureCard({
     setDraft(value);
   };
 
-  const copyImage = () => {
-    const src = captureImageSrc(capture);
-    if (!src) {
-      return;
-    }
-    fetch(src)
-      .then((response) => response.blob())
-      .then((blob) =>
-        navigator.clipboard.write([
-          new ClipboardItem({ [blob.type || "image/png"]: blob }),
-        ])
-      )
-      .then(() => {
-        onCopied?.();
-      })
-      .catch(() => undefined);
-  };
-
-  const copyText = () => {
-    navigator.clipboard.writeText(capture.body).then(
+  const copyContent = () => {
+    copyCaptureContent(capture).then(
       () => {
         onCopied?.();
       },
@@ -608,9 +647,21 @@ export function CaptureCard({
             listFocused={focused}
             onCancelEdit={cancelEdit}
             onCommitEdit={commitEdit}
-            onCopyImage={copyImage}
-            onCopyText={copyText}
+            onCopyContent={copyContent}
             onDraftChange={handleDraftChange}
+            onOpenImage={() => {
+              if (capture.kind !== "image" || !capture.imagePath) {
+                return;
+              }
+              if (isTauriRuntime()) {
+                quickLookImage(capture.imagePath).catch(() => undefined);
+                return;
+              }
+              const imageSrc = captureImageSrc(capture);
+              if (imageSrc) {
+                window.open(imageSrc, "_blank", "noopener");
+              }
+            }}
             onStartEdit={startEdit}
             onToggleSelect={() => {
               onToggleSelect(capture.id);

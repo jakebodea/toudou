@@ -34,7 +34,10 @@ export function navigableCaptures(
 }
 
 export async function copyCaptureContent(capture: Capture): Promise<void> {
-  if (capture.kind === "image" && capture.imagePath) {
+  if (
+    (capture.kind === "image" || capture.kind === "video") &&
+    capture.imagePath
+  ) {
     const src = captureImageSrc(capture);
     if (!src) {
       if (capture.body.length > 0) {
@@ -44,8 +47,14 @@ export async function copyCaptureContent(capture: Capture): Promise<void> {
     }
     const response = await fetch(src);
     const blob = await response.blob();
+    const contentType =
+      blob.type || (capture.kind === "image" ? "image/png" : "video/mp4");
+    const text = new Blob([capture.body], { type: "text/plain" });
     await navigator.clipboard.write([
-      new ClipboardItem({ [blob.type || "image/png"]: blob }),
+      new ClipboardItem({
+        [contentType]: blob,
+        "text/plain": text,
+      }),
     ]);
     return;
   }
