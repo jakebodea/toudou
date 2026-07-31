@@ -959,8 +959,11 @@ export function CaptureShell() {
         </Dialog>
       </header>
 
-      <ScrollArea className="min-h-0 flex-1">
-        {/* Bottom pad tracks floating footer height so the last cards clear the composer. */}
+      <ScrollArea
+        className="min-h-0 flex-1"
+        style={{ marginBottom: footerPad }}
+        viewportClassName="scroll-fade-y scroll-fade-t-8 scroll-fade-b-8"
+      >
         <div
           onPointerDown={(event) => {
             if (
@@ -971,7 +974,6 @@ export function CaptureShell() {
             }
             setFocusedId(null);
           }}
-          style={{ paddingBottom: footerPad }}
         >
           <CaptureInboxList
             active={active}
@@ -995,7 +997,7 @@ export function CaptureShell() {
       </ScrollArea>
 
       <footer
-        className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col gap-2 overscroll-none bg-transparent pt-1 pb-4"
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col gap-2 overscroll-none bg-transparent pb-4"
         ref={setFooterEl}
       >
         <div className="pointer-events-auto">

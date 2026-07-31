@@ -292,7 +292,7 @@ export function CaptureComposer({
               ))}
             </div>
           ) : null}
-          <InputGroup className="h-auto min-h-10 rounded-2xl border-0 bg-background shadow-sm ring-1 ring-foreground/5 transition-[box-shadow] duration-150 has-[[data-slot=input-group-control]:focus-visible]:border-transparent has-[[data-slot=input-group-control]:focus-visible]:shadow-md has-[[data-slot=input-group-control]:focus-visible]:ring-foreground/10">
+          <InputGroup className="h-auto min-h-10 rounded-2xl border-0 bg-background/90 shadow-sm ring-1 ring-foreground/5 transition-[box-shadow] duration-150 has-[[data-slot=input-group-control]:focus-visible]:border-transparent has-[[data-slot=input-group-control]:focus-visible]:shadow-md has-[[data-slot=input-group-control]:focus-visible]:ring-foreground/10">
             {previewUrl ? (
               <InputGroupAddon align="block-start">
                 <div className="flex items-start gap-2">
