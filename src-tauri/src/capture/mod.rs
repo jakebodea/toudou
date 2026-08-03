@@ -6,10 +6,14 @@ mod macos;
 use crate::db::{self, Db, NewCapture};
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, State};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
 use uuid::Uuid;
+
+const CAPTURE_NOTICE_EVENT: &str = "capture://created";
+const CAPTURE_NOTICE_WINDOW_LABEL: &str = "capture-notice";
+const CAPTURE_NOTIFICATION_BODY: &str = "Added to toudou";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -100,19 +104,70 @@ fn run_capture_on_main(app: &AppHandle) {
         source: saved.source,
     };
 
-    if let Err(err) = app.emit("capture://created", &notice) {
+    show_capture_notice(app, &notice);
+}
+
+fn show_capture_notice(app: &AppHandle, notice: &CaptureNotice) {
+    position_capture_notice(app);
+
+    if let Some(window) = app.get_webview_window(CAPTURE_NOTICE_WINDOW_LABEL) {
+        if let Err(err) = window.set_ignore_cursor_events(true) {
+            eprintln!("capture notice input passthrough failed: {err}");
+        }
+
+        if let Err(err) = window.show() {
+            eprintln!("capture notice show failed: {err}");
+        }
+
+        if let Err(err) = window.emit(CAPTURE_NOTICE_EVENT, notice) {
+            eprintln!("capture notice emit failed: {err}");
+        }
+    }
+
+    if let Err(err) = app.emit_to("main", CAPTURE_NOTICE_EVENT, notice) {
         eprintln!("capture emit failed: {err}");
     }
 
-    // System notification so feedback works while the main window is hidden.
+    // Keep a native fallback for users who prefer Notification Center.
     if let Err(err) = app
         .notification()
         .builder()
         .title("toudou")
-        .body("Captured")
+        .body(CAPTURE_NOTIFICATION_BODY)
         .show()
     {
         eprintln!("capture notification failed: {err}");
+    }
+}
+
+fn position_capture_notice(app: &AppHandle) {
+    let Some(window) = app.get_webview_window(CAPTURE_NOTICE_WINDOW_LABEL) else {
+        return;
+    };
+
+    let monitor = app
+        .cursor_position()
+        .ok()
+        .and_then(|position| app.monitor_from_point(position.x, position.y).ok().flatten())
+        .or_else(|| app.primary_monitor().ok().flatten());
+    let Some(monitor) = monitor else {
+        return;
+    };
+    let Ok(window_size) = window.outer_size() else {
+        return;
+    };
+
+    let work_area = monitor.work_area();
+    let scale_factor = monitor.scale_factor();
+    let horizontal_margin = (24.0 * scale_factor).round() as i32;
+    let top_margin = (18.0 * scale_factor).round() as i32;
+    let x = work_area.position.x + work_area.size.width as i32
+        - window_size.width as i32
+        - horizontal_margin;
+    let y = work_area.position.y + top_margin;
+
+    if let Err(err) = window.set_position(PhysicalPosition::new(x, y)) {
+        eprintln!("capture notice positioning failed: {err}");
     }
 }
 
@@ -220,12 +275,6 @@ pub fn ingest_capture(
         body: saved.body,
         source: saved.source,
     };
-    let _ = app.emit("capture://created", &notice);
-    let _ = app
-        .notification()
-        .builder()
-        .title("toudou")
-        .body("Captured")
-        .show();
+    show_capture_notice(&app, &notice);
     Ok(notice)
 }

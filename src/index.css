@@ -162,6 +162,11 @@
   }
 }
 
+html.capture-notice-html,
+body.capture-notice-body {
+  background: transparent;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

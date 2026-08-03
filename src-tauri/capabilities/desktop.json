@@ -7,7 +7,8 @@
   ],
   "windows": [
     "main",
-    "settings"
+    "settings",
+    "capture-notice"
   ],
   "permissions": [
     "updater:default",

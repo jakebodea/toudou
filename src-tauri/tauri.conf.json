@@ -10,6 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",
@@ -31,6 +32,23 @@
         "visible": false,
         "titleBarStyle": "Overlay",
         "backgroundColor": "#FBFBFB"
+      },
+      {
+        "label": "capture-notice",
+        "title": "toudou capture notice",
+        "width": 360,
+        "height": 72,
+        "visible": false,
+        "focus": false,
+        "focusable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "visibleOnAllWorkspaces": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "shadow": false,
+        "backgroundColor": "#00000000"
       }
     ],
     "security": {
