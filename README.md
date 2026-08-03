@@ -48,7 +48,8 @@ Editor: Biome format-on-save via `.vscode/settings.json` (install the recommende
 
 ## Capture (macOS)
 
-- **Double-Shift** — selected text only (Accessibility); needs Input Monitoring. No selection → no capture
+- **Left Double-Shift** — adds selected text only (Accessibility); needs Input Monitoring. No selection → no capture
+- **Right Double-Shift** — opens and focuses the window, including when it is hidden or minimized
 - **⌘⇧Space** — same selection-only path (works without Input Monitoring)
 - Close window → hides to tray (Quit from tray menu)
 

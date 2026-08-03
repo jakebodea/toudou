@@ -108,7 +108,8 @@ function resolveEscapeAction(
 function resolveGlobalNavAction(
   key: string,
   meta: boolean,
-  altKey: boolean
+  altKey: boolean,
+  hasSelection: boolean
 ): InboxShortcutAction | null {
   if (key === "/" && !meta && !altKey) {
     return { type: "focus-search" };
@@ -117,6 +118,9 @@ function resolveGlobalNavAction(
     return { type: "focus-search" };
   }
   if (key === "n" && !meta && !altKey) {
+    return { type: "focus-composer" };
+  }
+  if (key === "l" && meta && !altKey && !hasSelection) {
     return { type: "focus-composer" };
   }
   if (key === "d" && !meta && !altKey) {
@@ -180,7 +184,7 @@ export function resolveInboxShortcut(
     return null;
   }
 
-  const globalAction = resolveGlobalNavAction(key, meta, altKey);
+  const globalAction = resolveGlobalNavAction(key, meta, altKey, hasSelection);
   if (globalAction) {
     return globalAction;
   }

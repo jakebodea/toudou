@@ -18,6 +18,8 @@ interface ShortcutRow {
 }
 
 const ROWS: ShortcutRow[] = [
+  { keys: ["Left Shift", "Left Shift"], label: "Capture selected text" },
+  { keys: ["Right Shift", "Right Shift"], label: "Show toudou" },
   { keys: ["↑", "↓"], label: "Move focus in list" },
   { keys: ["→"], label: "Edit focused capture" },
   { keys: ["Enter"], label: "Copy (and In Progress if enabled)" },
@@ -25,6 +27,7 @@ const ROWS: ShortcutRow[] = [
   { keys: ["⌫"], label: "Delete focused" },
   { keys: ["x"], label: "Toggle multi-select" },
   { keys: ["/"], label: "Focus search" },
+  { keys: ["⌘", "L"], label: "Focus composer" },
   { keys: ["n"], label: "Focus composer" },
   { keys: ["d"], label: "Toggle Done section" },
   { keys: ["Esc"], label: "Clear selection / blur" },
@@ -41,7 +44,8 @@ export function CaptureShortcutsDialog({
         <DialogHeader>
           <DialogTitle>Keyboard shortcuts</DialogTitle>
           <DialogDescription>
-            Works when you are not typing in search, composer, or an editor.
+            Shift gestures work anywhere. List shortcuts work when you are not
+            typing in search, composer, or an editor.
           </DialogDescription>
         </DialogHeader>
         <ul className="flex flex-col gap-2.5">

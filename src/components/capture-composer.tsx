@@ -420,8 +420,10 @@ export function CaptureComposer({
             if (!file) {
               return;
             }
-            event.preventDefault();
             setPendingMedia(file);
+            if (!event.clipboardData.getData("text")) {
+              event.preventDefault();
+            }
           }}
           onSubmit={(event) => {
             event.preventDefault();
