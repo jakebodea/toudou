@@ -1,5 +1,38 @@
-import { captureImageSrc } from "@/lib/storage.ts";
+import { captureImageSrc, fileToBase64 } from "@/lib/storage.ts";
 import type { Capture } from "@/lib/types.ts";
+
+const HTML_ESCAPES: Record<string, string> = {
+  "'": "&#39;",
+  '"': "&quot;",
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+};
+
+function escapeHtml(value: string): string {
+  return value.replace(
+    /[&<>"']/g,
+    (character) => HTML_ESCAPES[character] ?? character
+  );
+}
+
+function mixedClipboardHtml(
+  body: string,
+  contentType: string,
+  mediaBase64: string,
+  kind: "image" | "video"
+): string {
+  const bodyMarkup =
+    body.length > 0
+      ? `<p>${escapeHtml(body).replace(/\r?\n/g, "<br>")}</p>`
+      : "";
+  const mediaSrc = `data:${contentType};base64,${mediaBase64}`;
+  const mediaMarkup =
+    kind === "image"
+      ? `<img alt="" src="${mediaSrc}">`
+      : `<video controls src="${mediaSrc}"></video>`;
+  return `<html><body>${bodyMarkup}${mediaMarkup}</body></html>`;
+}
 
 /** True when key events should stay with the focused field (composer, search, TipTap, etc.). */
 export function isTypingTarget(target: EventTarget | null): boolean {
@@ -50,9 +83,22 @@ export async function copyCaptureContent(capture: Capture): Promise<void> {
     const contentType =
       blob.type || (capture.kind === "image" ? "image/png" : "video/mp4");
     const text = new Blob([capture.body], { type: "text/plain" });
+    const mediaBase64 = await fileToBase64(blob);
+    const html = new Blob(
+      [
+        mixedClipboardHtml(
+          capture.body,
+          contentType,
+          mediaBase64,
+          capture.kind
+        ),
+      ],
+      { type: "text/html" }
+    );
     await navigator.clipboard.write([
       new ClipboardItem({
         [contentType]: blob,
+        "text/html": html,
         "text/plain": text,
       }),
     ]);
